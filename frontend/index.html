@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LMScraper — Event Scraping Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  
+  <aside class="sidebar" id="sidebar">
+    <h1>LMScraper</h1>
+    <nav>
+      <a href="#" class="nav-item active" data-target="section-new-job">➕ New Job</a>
+      <a href="#" class="nav-item" data-target="section-results">📊 Results</a>
+      <a href="#" class="nav-item" data-target="section-job-history">⏱ Job History</a>
+      <a href="#" class="nav-item" data-target="section-scheduler">📅 Scheduler</a>
+      <a href="#" class="nav-item" data-target="section-sessions">🍪 Saved Sessions</a>
+    </nav>
+  </aside>
+
+  <button class="mobile-nav-toggle" id="mobile-nav-toggle">☰</button>
+
+  <main class="main-content">
+    <div class="alert-banner hidden" id="alert-banner">
+      <span id="alert-banner-text">Alert message</span>
+      <button class="btn btn-sm btn-ghost" id="btn-close-alert">✕</button>
+    </div>
+
+    <!-- Section 1: New Job -->
+    <section class="section active" id="section-new-job">
+      <h2 class="section-title">Start New Scraping Job</h2>
+      
+      <div class="card">
+        <div class="form-group">
+          <label>Target URL</label>
+          <input type="url" id="job-url" class="input btn-lg" placeholder="https://www.goandance.com/es/eventos" data-tooltip="Enter the full URL of an event listing page">
+        </div>
+        
+        <div class="grid grid-cols-4 mt-4">
+          <div class="form-group">
+            <label>Date From</label>
+            <input type="date" id="job-date-from" class="input">
+          </div>
+          <div class="form-group">
+            <label>Date To</label>
+            <input type="date" id="job-date-to" class="input">
+          </div>
+          <div class="form-group">
+            <label>Location / City</label>
+            <input type="text" id="job-location" class="input" placeholder="e.g. Madrid">
+          </div>
+          <div class="form-group">
+            <label>Keyword / Category</label>
+            <input type="text" id="job-keyword" class="input" placeholder="e.g. Salsa">
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--text-secondary); font-size:0.875rem;">
+            <label class="toggle">
+              <input type="checkbox" id="toggle-advanced">
+              <span class="toggle-slider"></span>
+            </label>
+            Show Advanced Settings
+          </label>
+        </div>
+
+        <div id="advanced-settings" class="hidden mt-4 grid grid-cols-2" style="padding: 16px; background: var(--surface-elevated); border-radius: var(--radius-card);">
+          <div class="form-group">
+            <label>Proxy URL</label>
+            <input type="text" id="job-proxy" class="input" placeholder="http://user:pass@host:port" data-tooltip="Optional. Format: http://user:pass@host:port">
+          </div>
+          <div class="form-group">
+            <label>Saved Session (Cookies)</label>
+            <select id="select-session" class="select" data-tooltip="Use an authenticated session">
+              <option value="">None</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Request Delay (ms)</label>
+            <div style="display:flex; gap:8px;">
+              <input type="number" id="job-delay-min" class="input" placeholder="Min" value="1000" style="width:50%">
+              <input type="number" id="job-delay-max" class="input" placeholder="Max" value="3000" style="width:50%">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Concurrency: <span id="concurrency-val">2</span> <span data-tooltip="Higher = faster scraping, but more likely to be blocked. Start at 2.">ℹ️</span></label>
+            <div class="slider-wrapper" style="margin-top: 8px;">
+              <span style="font-size:0.75rem; color:var(--text-muted)">Stealth</span>
+              <input type="range" id="job-concurrency" class="slider" min="1" max="5" value="2">
+              <span style="font-size:0.75rem; color:var(--text-muted)">Speed</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4" style="display: flex; gap: 12px; margin-top: 24px;">
+          <button class="btn btn-primary btn-lg" id="btn-start-job">🚀 Start Scraping</button>
+          <button class="btn btn-secondary btn-lg hidden" id="btn-pause-job">⏸ Pause</button>
+          <button class="btn btn-secondary btn-lg hidden" id="btn-resume-job">▶ Resume</button>
+          <button class="btn btn-danger btn-lg hidden" id="btn-stop-job">⏹ Stop</button>
+        </div>
+      </div>
+
+      <div id="job-progress-section" class="card hidden">
+        <h3 class="modal-header">Progress: <span id="progress-phase">Initializing...</span></h3>
+        <div class="progress-container">
+          <div class="progress-header">
+            <span>Processed: <span id="progress-processed">0</span> / <span id="progress-total">0</span></span>
+            <span>New: <span id="progress-new" style="color:var(--success)">0</span> | Skipped: <span id="progress-skipped" style="color:var(--text-muted)">0</span></span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-bar" id="progress-bar"></div>
+          </div>
+        </div>
+        <div class="log-panel" id="log-panel"></div>
+      </div>
+    </section>
+
+    <!-- Section 2: Results -->
+    <section class="section" id="section-results">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h2 class="section-title" style="margin:0;">Scraped Events</h2>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <span id="results-count" style="font-size: 0.875rem; color: var(--text-secondary);">Showing 0 results</span>
+          <select id="results-per-page" class="select btn-sm">
+            <option value="25">25 per page</option>
+            <option value="50">50 per page</option>
+            <option value="100">100 per page</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" id="btn-export-csv">📥 CSV</button>
+          <button class="btn btn-secondary btn-sm" id="btn-export-xlsx">📥 XLSX</button>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <input type="date" id="filter-date-from" class="input btn-sm" title="Date From">
+        <input type="date" id="filter-date-to" class="input btn-sm" title="Date To">
+        <input type="text" id="filter-city" class="input btn-sm" placeholder="City">
+        <input type="text" id="filter-keyword" class="input btn-sm" placeholder="Keyword">
+        <select id="filter-job" class="select btn-sm">
+          <option value="">All Jobs</option>
+        </select>
+        <select id="filter-contact" class="select btn-sm">
+          <option value="">Has Contact: Any</option>
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+        <select id="filter-hidden-contact" class="select btn-sm">
+          <option value="">Hidden Contact: Any</option>
+          <option value="true">Yes (🔒)</option>
+        </select>
+        <button class="btn btn-primary btn-sm" id="btn-apply-filters">Apply</button>
+        <button class="btn btn-ghost btn-sm" id="btn-reset-filters">Reset</button>
+        
+        <div style="position: relative; margin-left: auto;">
+          <button class="btn btn-secondary btn-sm" id="btn-toggle-columns">⚙ Columns</button>
+          <div id="column-visibility-panel" class="card hidden" style="position: absolute; right: 0; top: 100%; margin-top: 8px; z-index: 20; min-width: 200px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <!-- populated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-4 hidden" id="bulk-actions">
+        <button class="btn btn-danger btn-sm" id="btn-bulk-delete">🗑 Delete Selected</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="results-table">
+          <thead>
+            <tr id="results-thead-tr">
+              <!-- populated by JS -->
+            </tr>
+          </thead>
+          <tbody id="results-tbody">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: flex; justify-content: center; gap: 8px; margin-top: 24px;" id="pagination-results">
+        <!-- populated by JS -->
+      </div>
+    </section>
+
+    <!-- Section 3: Job History -->
+    <section class="section" id="section-job-history">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h2 class="section-title" style="margin:0;">Job History</h2>
+        <button class="btn btn-secondary btn-sm" id="btn-refresh-jobs">🔄 Refresh</button>
+      </div>
+      <div id="job-history-list" class="grid grid-cols-2">
+        <!-- populated by JS -->
+      </div>
+    </section>
+
+    <!-- Section 4: Scheduler -->
+    <section class="section" id="section-scheduler">
+      <h2 class="section-title">Task Scheduler</h2>
+      
+      <div class="card">
+        <h3 class="modal-header">Create Schedule</h3>
+        <div class="grid grid-cols-2">
+          <div class="form-group">
+            <label>Label</label>
+            <input type="text" id="sched-label" class="input" placeholder="Daily GoAndDance Scrape">
+          </div>
+          <div class="form-group">
+            <label>Target URL</label>
+            <input type="url" id="sched-url" class="input" placeholder="https://...">
+          </div>
+        </div>
+        <div class="grid grid-cols-4 mt-4">
+          <div class="form-group"><label>Date From</label><input type="date" id="sched-date-from" class="input"></div>
+          <div class="form-group"><label>Date To</label><input type="date" id="sched-date-to" class="input"></div>
+          <div class="form-group"><label>City</label><input type="text" id="sched-city" class="input"></div>
+          <div class="form-group"><label>Keyword</label><input type="text" id="sched-keyword" class="input"></div>
+        </div>
+        <div class="mt-4">
+          <label>Schedule Timing</label>
+          <div style="display: flex; gap: 12px; margin-top: 8px; margin-bottom: 16px;">
+            <label class="btn btn-secondary btn-sm"><input type="radio" name="sched_preset" value="0 9 * * *" style="display:none"> Daily 9am</label>
+            <label class="btn btn-secondary btn-sm"><input type="radio" name="sched_preset" value="0 9 * * 1" style="display:none"> Weekly Mon</label>
+            <label class="btn btn-secondary btn-sm"><input type="radio" name="sched_preset" value="custom" style="display:none" checked> Custom Cron</label>
+          </div>
+          <div class="form-group" id="sched-cron-group">
+            <input type="text" id="sched-cron" class="input" placeholder="*/30 * * * *" data-tooltip="Standard cron expression (min hour day month dow)">
+          </div>
+        </div>
+        <button class="btn btn-primary mt-4" id="btn-create-schedule">Create Schedule</button>
+      </div>
+
+      <div class="table-wrapper mt-4">
+        <table id="schedules-table">
+          <thead>
+            <tr>
+              <th>Label</th><th>URL</th><th>Schedule</th><th>Next Run</th><th>Last Run</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="schedules-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 5: Saved Sessions -->
+    <section class="section" id="section-sessions">
+      <h2 class="section-title">Saved Sessions</h2>
+      
+      <div class="card" style="background: rgba(245, 166, 35, 0.05); border-color: var(--accent-dim);">
+        <h3 style="font-size: 1rem; margin-bottom: 8px;">How to extract cookies</h3>
+        <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">
+          1. Log into the target site in Google Chrome.<br>
+          2. Open DevTools (F12) → Application tab → Storage → Cookies.<br>
+          3. Right-click the domain and select "Copy all as JSON".<br>
+          4. Paste the JSON below.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="grid grid-cols-2">
+          <div class="form-group">
+            <label>Label</label>
+            <input type="text" id="session-label" class="input" placeholder="My GoAndDance Account">
+          </div>
+          <div class="form-group">
+            <label>Domain</label>
+            <input type="text" id="session-domain" class="input" placeholder="goandance.com">
+          </div>
+        </div>
+        <div class="form-group mt-4">
+          <label>Cookies JSON</label>
+          <textarea id="session-cookies" class="textarea" placeholder='[{"name":"session","value":"..."}]'></textarea>
+        </div>
+        <button class="btn btn-primary mt-4" id="btn-save-session">Save Session</button>
+      </div>
+
+      <div class="table-wrapper mt-4">
+        <table id="sessions-table">
+          <thead>
+            <tr><th>Label</th><th>Domain</th><th>Created</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="sessions-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer Monitor -->
+  <footer class="footer-monitor" id="footer-monitor">
+    <div class="monitor-stats">
+      <span>Events: <strong id="monitor-events">—</strong></span>
+      <span>DB Size: <strong id="monitor-db-size">—</strong></span>
+      <span>Cache Size: <strong id="monitor-cache-size">—</strong></span>
+    </div>
+    <button class="btn btn-secondary btn-sm" id="btn-open-cleanup">🗑 Clean up</button>
+  </footer>
+
+  <!-- Cleanup Modal -->
+  <div class="modal-overlay hidden" id="modal-cleanup">
+    <div class="modal">
+      <h3 class="modal-header">System Cleanup</h3>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+        
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+          <div class="form-group" style="margin:0;">
+            <label>Delete HTML cache older than (days)</label>
+            <input type="number" id="cleanup-cache-days" class="input btn-sm" value="7" style="width: 100px;">
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btn-clean-cache-age">Clean Cache</button>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+          <div class="form-group" style="margin:0;">
+            <label>Delete HTML cache larger than (MB)</label>
+            <input type="number" id="cleanup-cache-mb" class="input btn-sm" value="500" style="width: 100px;">
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btn-clean-cache-size">Clean Cache</button>
+        </div>
+        
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+          <div class="form-group" style="margin:0;">
+            <label>Delete unlinked events older than (days)</label>
+            <input type="number" id="cleanup-events-days" class="input btn-sm" value="30" style="width: 100px;">
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btn-clean-events">Clean Events</button>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+          <span style="font-size:0.875rem; color:var(--text-secondary);">Compress all HTML caches (SQLite VACUUM)</span>
+          <button class="btn btn-secondary btn-sm" id="btn-clean-compress">Compress</button>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+          <span style="font-size:0.875rem; color:var(--text-secondary);">Export full database backup</span>
+          <div>
+            <button class="btn btn-secondary btn-sm" id="btn-clean-backup">Backup DB</button>
+            <a id="backup-download-link" class="hidden" style="margin-left:8px; font-size:0.75rem; color:var(--accent);" href="" download>Download</a>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; background: rgba(248, 113, 113, 0.05); padding: 12px; border-radius: var(--radius-btn); border: 1px solid rgba(248,113,113,0.2);">
+          <div class="form-group" style="margin:0;">
+            <label style="color:var(--error);">Purge everything (Type DELETE)</label>
+            <input type="text" id="cleanup-purge-confirm" class="input btn-sm" placeholder="DELETE" style="width: 120px;">
+          </div>
+          <button class="btn btn-danger btn-sm" id="btn-clean-purge" disabled>PURGE ALL</button>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btn-close-cleanup">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generic Confirm Modal -->
+  <div class="modal-overlay hidden" id="modal-confirm">
+    <div class="modal">
+      <h3 class="modal-header">Confirm Action</h3>
+      <div class="modal-body">
+        <p id="confirm-message" style="font-size:0.875rem; color:var(--text-secondary);"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btn-confirm-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-confirm-ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

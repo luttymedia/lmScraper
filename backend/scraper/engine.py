@@ -117,7 +117,7 @@ async def emit(queue: asyncio.Queue, event: dict) -> None:
     if queue:
         await queue.put(event)
 
-async def auto_scroll(page: Page, max_scrolls: int = 25) -> None:
+async def auto_scroll(page: Page, max_scrolls: int = 25, check_state=None) -> None:
     """Scroll down and click 'Load more' buttons to load dynamic content."""
     # Dismiss cookie banner if present so it doesn't obstruct clicks
     try:
@@ -129,9 +129,11 @@ async def auto_scroll(page: Page, max_scrolls: int = 25) -> None:
         pass
 
     for _ in range(max_scrolls):
+        if check_state: await check_state()
         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
         await asyncio.sleep(0.8)
         
+        if check_state: await check_state()
         # Check for 'Cargar más' / 'Load more' button
         try:
             more_btn = page.locator('button:has-text("Cargar más"), .list-show-more button, .js-load-more, .list-show-more, [class*="load-more"], button:has-text("Load more")')
@@ -149,9 +151,10 @@ async def process_listing_page(page: Page, config: ScraperConfig, scraper: BaseS
     await save_html(config.job_id, page.url, html)
     return await scraper.process_listing_page(page, html, page.url)
 
-async def scrape_detail_page(context: BrowserContext, url: str, config: ScraperConfig, sem: asyncio.Semaphore, scraper: BaseScraper) -> tuple[dict | None, str | None]:
+async def scrape_detail_page(context: BrowserContext, url: str, config: ScraperConfig, sem: asyncio.Semaphore, scraper: BaseScraper, check_state=None) -> tuple[dict | None, str | None]:
     """Scrape a single event detail page."""
     async with sem:
+        if check_state: await check_state()
         cached = await load_html(config.job_id, url)
         
         if cached:
@@ -160,8 +163,10 @@ async def scrape_detail_page(context: BrowserContext, url: str, config: ScraperC
             page = await context.new_page()
             await apply_stealth_page(page)
             try:
-                await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                if check_state: await check_state()
+                await page.goto(url, wait_until='domcontentloaded', timeout=45000)
                 await random_delay(config.min_delay, config.max_delay)
+                if check_state: await check_state()
                 
                 await scraper.prepare_detail_page(page)
                     
@@ -242,7 +247,7 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
             soup = BeautifulSoup(html, 'html.parser')
             
             await emit(progress_queue, {"type": "log", "level": "info", "message": "Scrolling page to load dynamic content..."})
-            await auto_scroll(page)
+            await auto_scroll(page, check_state=check_state)
             
             scraper = get_scraper(config.platform)
             urls = await process_listing_page(page, config, scraper)
@@ -267,7 +272,7 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
             for i, url in enumerate(detail_urls_list, 1):
                 await check_state()
                 
-                event, prof = await scrape_detail_page(context, url, config, sem, scraper)
+                event, prof = await scrape_detail_page(context, url, config, sem, scraper, check_state=check_state)
                 if event:
                     matches, reason = event_matches_filters(event, config.filters)
                     if not matches:
@@ -338,6 +343,7 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
         
     except asyncio.CancelledError:
         await emit(progress_queue, {"type": "log", "level": "warning", "message": "Job cancelled by user"})
+        await emit(progress_queue, {"type": "cancelled"})
     except Exception as e:
         import traceback
         tb = traceback.format_exc()

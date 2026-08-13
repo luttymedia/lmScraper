@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono&display=swap"
     rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="style.css?v=15">
+  <link rel="stylesheet" href="style.css?v=18">
 </head>
 
 <body>
@@ -22,16 +22,27 @@
         style="cursor: pointer; border: none; font-weight: 600; padding: 4px 8px; font-size: 0.75rem;">v1.1.0</button>
     </div>
     <nav>
-      <a href="#" class="nav-item active" data-target="section-new-job"><i data-lucide="plus-circle"
-          class="nav-icon"></i> New Job</a>
-      <a href="#" class="nav-item" data-target="section-results"><i data-lucide="bar-chart-2" class="nav-icon"></i>
-        Results</a>
-      <a href="#" class="nav-item" data-target="section-job-history"><i data-lucide="clock" class="nav-icon"></i> Job
-        History</a>
-      <a href="#" class="nav-item" data-target="section-scheduler"><i data-lucide="calendar" class="nav-icon"></i>
-        Scheduler</a>
-      <a href="#" class="nav-item" data-target="section-sessions"><i data-lucide="key" class="nav-icon"></i> Saved
-        Sessions</a>
+      <a href="#" class="nav-item active" data-target="section-new-job">
+        <i data-lucide="plus-circle" class="nav-icon"></i> <span>New Job</span>
+      </a>
+      <a href="#" class="nav-item" data-target="section-results">
+        <i data-lucide="bar-chart-2" class="nav-icon"></i> <span>Results</span>
+      </a>
+      <a href="#" class="nav-item" data-target="section-job-history">
+        <span style="display:inline-flex; align-items:center; gap:8px;">
+          <i data-lucide="clock" class="nav-icon"></i> <span>Job History</span>
+        </span>
+        <span class="nav-pulse-dot" id="job-history-pulse" style="display: none;" title="A scraping job is currently running"></span>
+      </a>
+      <a href="#" class="nav-item" data-target="section-scheduler">
+        <span style="display:inline-flex; align-items:center; gap:8px;">
+          <i data-lucide="calendar" class="nav-icon"></i> <span>Scheduler</span>
+        </span>
+        <span class="nav-pulse-dot" id="scheduler-pulse" style="display: none;" title="A scheduled job is active / running"></span>
+      </a>
+      <a href="#" class="nav-item" data-target="section-sessions">
+        <i data-lucide="key" class="nav-icon"></i> <span>Saved Sessions</span>
+      </a>
     </nav>
   </aside>
 
@@ -674,7 +685,7 @@
 
   <div id="toast-container"></div>
 
-  <script type="module" src="app.js?v=26"></script>
+  <script type="module" src="app.js?v=30"></script>
   <script>lucide.createIcons();</script>
 </body>
 

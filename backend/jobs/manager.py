@@ -24,9 +24,12 @@ async def _broadcast_loop(job_id: str):
                 except:
                     pass
                     
-            if event.get('type') in ('done', 'error'):
+            if event.get('type') in ('done', 'error', 'cancelled'):
                 # Update DB and cleanup
-                status = 'done' if event['type'] == 'done' else 'failed'
+                if event['type'] == 'cancelled':
+                    status = 'cancelled'
+                else:
+                    status = 'done' if event['type'] == 'done' else 'failed'
                 updates = {
                     'status': status,
                     'finished_at': datetime.utcnow().isoformat()

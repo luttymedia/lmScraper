@@ -459,6 +459,7 @@ function connectJobWs(jobId) {
   
   const wsUrl = API.replace('http', 'ws') + `/ws/jobs/${jobId}`;
   currentJobWs = new WebSocket(wsUrl);
+  let jobEndedCleanly = false;
   
   currentJobWs.onmessage = (event) => {
     try {
@@ -469,7 +470,12 @@ function connectJobWs(jobId) {
         appendLog(data.message, data.level || 'info');
       } else if (data.type === 'progress') {
         updateProgress(data);
+      } else if (data.type === 'heartbeat') {
+        // keep-alive, ignore
+      } else if (data.type === 'init') {
+        // initial state message, ignore
       } else if (data.type === 'done' || data.type === 'error' || data.type === 'cancelled') {
+        jobEndedCleanly = true;
         if (data.message) appendLog(data.message, data.type === 'error' ? 'error' : 'info');
         appendLog(`Job ended with status: ${data.type}`, data.type === 'error' ? 'error' : 'success');
         resetJobControls();
@@ -479,10 +485,18 @@ function connectJobWs(jobId) {
     } catch(e) {}
   };
   
-  currentJobWs.onclose = () => {
-    if (!UI.btnStop.classList.contains('hidden')) {
-      appendLog('Connection closed.', 'error');
+  currentJobWs.onclose = (event) => {
+    // Only show an unexpected closure if the job never sent a clean end message
+    // and the stop button is still visible (i.e. user didn't cancel manually)
+    if (!jobEndedCleanly && !UI.btnStop.classList.contains('hidden')) {
+      appendLog(`Connection lost (code ${event.code}). The job may still be running in the background.`, 'warning');
       resetJobControls();
+    }
+  };
+
+  currentJobWs.onerror = () => {
+    if (!jobEndedCleanly) {
+      appendLog('WebSocket error. Check the backend server.', 'error');
     }
   };
 }
@@ -844,10 +858,6 @@ async function loadJobHistory() {
       `;
       container.appendChild(card);
     });
-
-    if(isRunning && activeSectionId === 'section-job-history') {
-      setTimeout(loadJobHistory, 5000);
-    }
   } catch(e) {
     console.error('Failed to load job history', e);
   }
@@ -1574,9 +1584,121 @@ if (btnCloseVersion) {
   });
 }
 
+// ── Live Background Polling & Status Sync ─────────────────────────────────────
+
+let prevRunningJobIds = new Set();
+let isPolling = false;
+
+async function pollLiveState() {
+  if (isPolling) return;
+  isPolling = true;
+  try {
+    // 1. Instant in-memory active jobs check — use raw fetch to avoid toast errors
+    let hasRunningJob = false;
+    let hasRunningScheduledJob = false;
+    let activeJobIds = [];
+    try {
+      const activeRes = await fetch(`${API}/api/jobs/active`);
+      if (activeRes.ok) {
+        const activeData = await activeRes.json();
+        hasRunningJob = activeData.has_active_jobs || false;
+        hasRunningScheduledJob = (activeData.active_schedule_ids?.length || 0) > 0;
+        activeJobIds = activeData.active_job_ids || [];
+      }
+    } catch (_) {}
+    
+    const jobHistoryDot = document.getElementById('job-history-pulse') || (function() {
+      const parent = document.querySelector('[data-target="section-job-history"]');
+      if (!parent) return null;
+      const dot = document.createElement('span');
+      dot.id = 'job-history-pulse';
+      dot.className = 'nav-pulse-dot';
+      parent.appendChild(dot);
+      return dot;
+    })();
+    
+    if (jobHistoryDot) {
+      jobHistoryDot.style.display = hasRunningJob ? 'inline-block' : 'none';
+    }
+    
+    // Update Scheduler sidebar pulse dot
+    const schedDot = document.getElementById('scheduler-pulse') || (function() {
+      const parent = document.querySelector('[data-target="section-scheduler"]');
+      if (!parent) return null;
+      const dot = document.createElement('span');
+      dot.id = 'scheduler-pulse';
+      dot.className = 'nav-pulse-dot';
+      parent.appendChild(dot);
+      return dot;
+    })();
+    
+    if (schedDot) {
+      schedDot.style.display = hasRunningScheduledJob ? 'inline-block' : 'none';
+    }
+
+    // 2. Fetch recent jobs to sync history / table data
+    const res = await api('/api/jobs?page=1&per_page=20');
+    const jobs = Array.isArray(res) ? res : (res.jobs || []);
+
+    // Detect if a job just finished
+    const currentRunningIds = new Set(activeJobIds.length > 0 ? activeJobIds : jobs.filter(j => j.status === 'running' || j.status === 'pending').map(j => j.id));
+    for (const prevId of prevRunningJobIds) {
+      if (!currentRunningIds.has(prevId)) {
+        const finishedJob = jobs.find(j => j.id === prevId);
+        if (finishedJob) {
+          const title = finishedJob.schedule_label ? `Scheduled job "${finishedJob.schedule_label}"` : 'Scraping job';
+          if (finishedJob.status === 'done') {
+            showToast(`${title} finished (${finishedJob.events_found || 0} events, ${finishedJob.events_new || 0} new)`, 'success');
+          } else if (finishedJob.status === 'failed') {
+            showToast(`${title} failed`, 'error');
+          }
+        }
+        if (activeSectionId === 'section-scheduler') loadSchedules();
+        if (activeSectionId === 'section-results') loadResults();
+      }
+    }
+    prevRunningJobIds = currentRunningIds;
+
+    // Live update currently viewed section
+    if (activeSectionId === 'section-job-history') {
+      loadJobHistory();
+    } else if (activeSectionId === 'section-scheduler') {
+      loadSchedules();
+    }
+  } catch (e) {
+    // Ignore polling errors
+  } finally {
+    isPolling = false;
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Inject CSS dynamically to bypass any browser cache issues for the new dot
+  if (!document.getElementById('pulse-dot-styles')) {
+    const style = document.createElement('style');
+    style.id = 'pulse-dot-styles';
+    style.textContent = `
+      .nav-pulse-dot {
+        display: none;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background-color: #34d399;
+        margin-left: 8px;
+        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7);
+        animation: navPulse 2s infinite;
+      }
+      @keyframes navPulse {
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+        70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   setupNavigation();
   setupResultsColumns();
   
@@ -1586,8 +1708,12 @@ document.addEventListener('DOMContentLoaded', () => {
     loadMonitorStats(),
     loadJobHistory(),
     loadResults(),
-    loadSchedules()
+    loadSchedules(),
+    pollLiveState()
   ]);
   
+  // Real-time status sync every 2.5 seconds
+  setInterval(pollLiveState, 2500);
+  // Monitor stats every 60 seconds
   setInterval(loadMonitorStats, 60000);
 });

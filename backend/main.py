@@ -29,7 +29,7 @@ from backend.storage.monitor import (
 from backend.jobs.manager import (
     start_job, pause_job, resume_job_control, cancel_job,
     subscribe, unsubscribe, resume_from_db, get_active_job_ids,
-    is_schedule_running
+    is_schedule_running, active_jobs
 )
 from backend.jobs.scheduler import (
     start_scheduler, shutdown_scheduler, create_schedule,
@@ -101,6 +101,17 @@ async def create_job_route(body: dict = Body(...)):
     
     await start_job(job_id, config)
     return await get_job(job_id)
+
+@app.get("/api/jobs/active")
+async def get_active_jobs_status():
+    active_ids = get_active_job_ids()
+    active_sched_ids = [j.get('schedule_id') for j in active_jobs.values() if j.get('schedule_id')]
+    return {
+        "has_active_jobs": len(active_ids) > 0,
+        "active_job_ids": active_ids,
+        "active_schedule_ids": active_sched_ids,
+        "count": len(active_ids)
+    }
 
 @app.get("/api/jobs")
 async def list_jobs_route(page: int = 1, per_page: int = 20):

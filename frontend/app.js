@@ -856,122 +856,152 @@ document.getElementById('btn-export-xlsx').addEventListener('click', () => {
 
 // ── Job History ──────────────────────────────────────────────────────────────
 
-async function loadJobHistory() {
+async function loadJobHistory(selectedJobId) {
   try {
     const res = await api('/api/jobs');
     const jobs = Array.isArray(res) ? res : (res.jobs || []);
     const container = document.getElementById('job-history-list');
-    container.innerHTML = '';
+    if (container) container.innerHTML = '';
     
     // populate job filter dropdown
     const jobFilter = document.getElementById('filter-job');
-    const currentSelectedJob = jobFilter ? jobFilter.value : '';
+    const targetJobId = selectedJobId !== undefined 
+      ? selectedJobId 
+      : (jobFilter ? jobFilter.value : '');
+
     if (jobFilter) {
       jobFilter.innerHTML = '<option value="">All Jobs</option>';
-    }
-    
-    if(jobs.length === 0) {
-      container.innerHTML = `<div class="empty-state" style="grid-column: span 2">
-        <div class="empty-state-icon">${ICONS.clock}</div><p>No job history</p></div>`;
-      return;
-    }
-
-    let isRunning = false;
-    jobs.forEach(job => {
-      if(job.status === 'running' || job.status === 'pending') isRunning = true;
-      
-      if (jobFilter) {
+      jobs.forEach(job => {
         const opt = document.createElement('option');
         opt.value = job.id;
         opt.textContent = `${formatDate(job.created_at)} - ${truncate(job.url, 30)}`;
-        if (job.id === currentSelectedJob) opt.selected = true;
+        if (job.id === targetJobId) opt.selected = true;
         jobFilter.appendChild(opt);
+      });
+      if (targetJobId) {
+        jobFilter.value = targetJobId;
+      }
+    }
+    
+    if(container) {
+      if(jobs.length === 0) {
+        container.innerHTML = `<div class="empty-state" style="grid-column: span 2">
+          <div class="empty-state-icon">${ICONS.clock}</div><p>No job history</p></div>`;
+        return;
       }
 
-      // Extract filter tags
-      let filterTags = [];
-      if (job.schedule_id || job.schedule_label) {
-        const schedLabel = job.schedule_label || 'Scheduled Job';
-        filterTags.push(`<span class="tag" style="background:rgba(52, 211, 153, 0.15); color:#4ade80; border:1px solid rgba(52, 211, 153, 0.35); font-weight:600;" title="Created by Schedule: ${schedLabel}">⏱️ ${escapeHtml(schedLabel)}</span>`);
-      }
-      if (job.platform) filterTags.push(`<span class="tag" style="background:var(--surface-elevated)">🏢 ${job.platform}</span>`);
-      if (job.dance_style) filterTags.push(`<span class="tag" style="background:var(--primary);color:#fff">💃 ${job.dance_style}</span>`);
-      
-      const f = typeof job.filters === 'string' ? JSON.parse(job.filters || '{}') : (job.filters || {});
-      if (f.city) filterTags.push(`<span class="tag">📍 ${escapeHtml(f.city)}</span>`);
-      if (f.keyword) filterTags.push(`<span class="tag">🔍 ${escapeHtml(f.keyword)}</span>`);
-      if (f.date_from || f.date_to) filterTags.push(`<span class="tag">📅 ${escapeHtml(f.date_from || 'Any')} → ${escapeHtml(f.date_to || 'Any')}</span>`);
-      
-      const filterHtml = filterTags.length > 0 
-        ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">${filterTags.join('')}</div>`
-        : `<div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px;">No filter parameters</div>`;
+      let isRunning = false;
+      jobs.forEach(job => {
+        if(job.status === 'running' || job.status === 'pending') isRunning = true;
 
-      let durationStr = 'N/A';
-      if (job.started_at) {
-        const start = new Date(job.started_at).getTime();
-        const end = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
-        const diffSecs = Math.floor((end - start) / 1000);
-        if (diffSecs < 60) {
-          durationStr = `${diffSecs}s`;
-        } else {
-          const m = Math.floor(diffSecs / 60);
-          const s = diffSecs % 60;
-          durationStr = `${m}m ${s}s`;
+        // Extract filter tags
+        let filterTags = [];
+        if (job.schedule_id || job.schedule_label) {
+          const schedLabel = job.schedule_label || 'Scheduled Job';
+          filterTags.push(`<span class="tag" style="background:rgba(52, 211, 153, 0.15); color:#4ade80; border:1px solid rgba(52, 211, 153, 0.35); font-weight:600;" title="Created by Schedule: ${schedLabel}">⏱️ ${escapeHtml(schedLabel)}</span>`);
         }
-      }
+        if (job.platform) filterTags.push(`<span class="tag" style="background:var(--surface-elevated)">🏢 ${job.platform}</span>`);
+        if (job.dance_style) filterTags.push(`<span class="tag" style="background:var(--primary);color:#fff">💃 ${job.dance_style}</span>`);
+        
+        const f = typeof job.filters === 'string' ? JSON.parse(job.filters || '{}') : (job.filters || {});
+        if (f.city) filterTags.push(`<span class="tag">📍 ${escapeHtml(f.city)}</span>`);
+        if (f.keyword) filterTags.push(`<span class="tag">🔍 ${escapeHtml(f.keyword)}</span>`);
+        if (f.date_from || f.date_to) filterTags.push(`<span class="tag">📅 ${escapeHtml(f.date_from || 'Any')} → ${escapeHtml(f.date_to || 'Any')}</span>`);
+        
+        const filterHtml = filterTags.length > 0 
+          ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">${filterTags.join('')}</div>`
+          : `<div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px;">No filter parameters</div>`;
 
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <div style="font-size:0.8rem; color:var(--text-secondary); display:flex; align-items:center; gap:6px;">
-            <span>${formatDate(job.created_at)}</span>
-          </div>
-          <span class="badge badge-${job.status}">${job.status}</span>
-        </div>
-
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--surface-elevated); border:1px solid var(--border); border-radius:8px; padding:7px 10px; margin-bottom:12px; font-family:'JetBrains Mono', monospace; font-size:0.8rem;">
-          <a href="${job.url}" target="_blank" style="color:var(--text-primary); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${job.url}">
-            ${job.url}
-          </a>
-          <div style="display:inline-flex; gap:4px; flex-shrink:0; align-items:center;">
-            <button class="icon-btn" onclick="copyJobUrl('${escapeJs(job.url)}')" title="Copy Full Target URL" style="padding:3px; color:var(--text-secondary);">
-              ${ICONS.copy}
-            </button>
-            <a href="${job.url}" target="_blank" class="icon-btn" title="Open Target URL in new tab" style="padding:3px; color:var(--text-secondary); text-decoration:none;">
-              ${ICONS.external}
-            </a>
-          </div>
-        </div>
-
-        ${filterHtml}
-        <div class="grid grid-cols-2" style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:16px; gap:8px;">
-          <div>Events found: <strong style="color:var(--text-primary)">${job.events_found || 0}</strong></div>
-          <div>New: <strong style="color:var(--success)">${job.events_new || 0}</strong></div>
-          <div>Duration: <strong style="color:var(--text-primary)">${durationStr}</strong></div>
-        </div>
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap;">
-          <button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="viewJobResults('${job.id}')">${ICONS.chart} View Results</button>
-          ${job.status === 'running' || job.status === 'pending'
-            ? `<button class="btn btn-danger btn-sm" style="white-space:nowrap; background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;" onclick="cancelJobHistory('${job.id}')">${ICONS.pause} Stop</button>`
-            : `<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="rerunJob('${job.id}')">${ICONS.repeat} Rerun</button>`
+        let durationStr = 'N/A';
+        if (job.started_at) {
+          const start = new Date(job.started_at).getTime();
+          const end = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
+          const diffSecs = Math.floor((end - start) / 1000);
+          if (diffSecs < 60) {
+            durationStr = `${diffSecs}s`;
+          } else {
+            const m = Math.floor(diffSecs / 60);
+            const s = diffSecs % 60;
+            durationStr = `${m}m ${s}s`;
           }
-          <button class="btn btn-danger btn-sm" style="white-space:nowrap;" onclick="deleteJob('${job.id}')">${ICONS.trash} Delete</button>
-        </div>
-      `;
-      container.appendChild(card);
-    });
+        }
+
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <div style="font-size:0.8rem; color:var(--text-secondary); display:flex; align-items:center; gap:6px;">
+              <span>${formatDate(job.created_at)}</span>
+            </div>
+            <span class="badge badge-${job.status}">${job.status}</span>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--surface-elevated); border:1px solid var(--border); border-radius:8px; padding:7px 10px; margin-bottom:12px; font-family:'JetBrains Mono', monospace; font-size:0.8rem;">
+            <a href="${job.url}" target="_blank" style="color:var(--text-primary); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${job.url}">
+              ${job.url}
+            </a>
+            <div style="display:inline-flex; gap:4px; flex-shrink:0; align-items:center;">
+              <button class="icon-btn" onclick="copyJobUrl('${escapeJs(job.url)}')" title="Copy Full Target URL" style="padding:3px; color:var(--text-secondary);">
+                ${ICONS.copy}
+              </button>
+              <a href="${job.url}" target="_blank" class="icon-btn" title="Open Target URL in new tab" style="padding:3px; color:var(--text-secondary); text-decoration:none;">
+                ${ICONS.external}
+              </a>
+            </div>
+          </div>
+
+          ${filterHtml}
+          <div class="grid grid-cols-2" style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:16px; gap:8px;">
+            <div>Events found: <strong style="color:var(--text-primary)">${job.events_found || 0}</strong></div>
+            <div>New: <strong style="color:var(--success)">${job.events_new || 0}</strong></div>
+            <div>Duration: <strong style="color:var(--text-primary)">${durationStr}</strong></div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap;">
+            <button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="viewJobResults('${job.id}')">${ICONS.chart} View Results</button>
+            ${job.status === 'running' || job.status === 'pending'
+              ? `<button class="btn btn-danger btn-sm" style="white-space:nowrap; background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;" onclick="cancelJobHistory('${job.id}')">${ICONS.pause} Stop</button>`
+              : `<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="rerunJob('${job.id}')">${ICONS.repeat} Rerun</button>`
+            }
+            <button class="btn btn-danger btn-sm" style="white-space:nowrap;" onclick="deleteJob('${job.id}')">${ICONS.trash} Delete</button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
   } catch(e) {
     console.error('Failed to load job history', e);
   }
 }
 
-window.viewJobResults = (jobId) => {
-  document.querySelector('.nav-item[data-target="section-results"]').click();
+window.viewJobResults = async (jobId) => {
+  // Navigate to Results section
+  const navItems = document.querySelectorAll('.nav-item');
+  navItems.forEach(n => n.classList.remove('active'));
+  const resultsNav = document.querySelector('.nav-item[data-target="section-results"]');
+  if (resultsNav) resultsNav.classList.add('active');
+
+  const sections = document.querySelectorAll('.section');
+  sections.forEach(s => s.classList.remove('active'));
+  const resultsSection = document.getElementById('section-results');
+  if (resultsSection) resultsSection.classList.add('active');
+  activeSectionId = 'section-results';
+
+  const sidebar = document.getElementById('sidebar');
+  if (window.innerWidth <= 768 && sidebar) sidebar.classList.remove('open');
+
+  // Clear all other filter inputs so we only filter by this job
+  document.querySelectorAll('.filter-bar input, .filter-bar select').forEach(el => {
+    el.value = '';
+  });
+
+  // Populate job dropdown options and select this jobId
+  await loadJobHistory(jobId);
+
   const jobFilter = document.getElementById('filter-job');
   if (jobFilter) jobFilter.value = jobId;
+
   currentPage = 1;
-  loadResults();
+  await loadResults();
 };
 
 window.rerunJob = async (jobId) => {

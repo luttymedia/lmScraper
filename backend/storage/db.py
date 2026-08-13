@@ -149,6 +149,25 @@ async def init_db() -> None:
         except Exception:
             pass
 
+        # Update historical content hashes to language-agnostic normalized hashes
+        try:
+            from backend.scraper.extractors import content_hash
+            async with db.execute("SELECT id, title, date_start, event_url, content_hash FROM events") as cursor:
+                rows = await cursor.fetchall()
+                for row in rows:
+                    eid, title, date_start, event_url, current_hash = row[0], row[1], row[2], row[3], row[4]
+                    if event_url:
+                        correct_hash = content_hash(title, date_start, event_url)
+                        if current_hash != correct_hash:
+                            try:
+                                await db.execute("UPDATE events SET content_hash = ? WHERE id = ?", (correct_hash, eid))
+                            except Exception:
+                                # Duplicate collision with another already normalized record
+                                await db.execute("DELETE FROM events WHERE id = ?", (eid,))
+            await db.commit()
+        except Exception:
+            pass
+
 async def insert_event(event_dict: dict) -> int | None:
     """Insert a new event. Returns the inserted ID or None if duplicate hash."""
     keys = list(event_dict.keys())

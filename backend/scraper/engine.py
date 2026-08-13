@@ -13,6 +13,7 @@ from backend.scraper.html_cache import save_html, load_html, is_cached
 from backend.storage.db import insert_event, update_job
 from backend.scraper.base import BaseScraper
 from backend.scraper.goandance import GoAndDanceScraper
+from backend.scraper.extractors import content_hash
 
 def get_scraper(platform: str) -> BaseScraper:
     if platform == 'goandance':
@@ -190,10 +191,12 @@ async def scrape_detail_page(context: BrowserContext, url: str, config: ScraperC
             event['job_id'] = config.job_id
             event['platform'] = getattr(config, 'platform', 'goandance')
             
-            # Compute hash (need to import content_hash or compute it here)
-            import hashlib
-            s = f"{event.get('title') or ''}{event.get('date_start') or ''}{event.get('event_url') or ''}".lower().strip()
-            event['content_hash'] = hashlib.sha256(s.encode('utf-8')).hexdigest()
+            # Compute deduplication hash
+            event['content_hash'] = content_hash(
+                event.get('title', ''),
+                event.get('date_start', ''),
+                event.get('event_url', '')
+            )
             
         return event, profile_url
 

@@ -63,9 +63,30 @@ def detect_hidden_contact(soup: BeautifulSoup) -> bool:
             
     return False
 
+def normalize_event_url(url: str) -> str:
+    """Normalize event URL to be language and query-param agnostic for deduplication."""
+    if not url:
+        return ""
+    try:
+        parsed = urlparse(url.strip())
+        domain = parsed.netloc.lower()
+        if 'goandance.com' in domain:
+            # Go&Dance event detail links: /es/evento/8817/... or /en/event/8817/...
+            match = re.search(r'/(?:es|en)?/(?:evento|event)/(\d+)', parsed.path, re.I)
+            if not match:
+                match = re.search(r'/(?:evento|event)/(\d+)', parsed.path, re.I)
+            if match:
+                event_id = match.group(1)
+                return f"https://www.goandance.com/event/{event_id}"
+        clean_path = parsed.path.rstrip('/')
+        return f"{parsed.scheme}://{domain}{clean_path}".lower()
+    except Exception:
+        return url.strip().lower()
+
 def content_hash(title: str, date: str, url: str) -> str:
-    """Compute deduplication hash."""
-    s = f"{title or ''}{date or ''}{url or ''}".lower().strip()
+    """Compute deduplication hash using normalized URL."""
+    norm_url = normalize_event_url(url)
+    s = f"{title or ''}{date or ''}{norm_url}".lower().strip()
     return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
 def extract_event_fields(soup: BeautifulSoup, url: str, source_domain: str) -> dict:

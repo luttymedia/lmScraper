@@ -16,6 +16,7 @@ async def get_db():
     conn = await aiosqlite.connect(str(DB_PATH), timeout=30.0)
     conn.row_factory = aiosqlite.Row
     await conn.execute("PRAGMA busy_timeout = 10000;")
+    await conn.execute("PRAGMA foreign_keys = ON;")
     try:
         yield conn
     finally:
@@ -130,10 +131,23 @@ async def init_db() -> None:
             pass  # Column already exists
 
         try:
+            await db.execute('ALTER TABLE schedules ADD COLUMN dance_style TEXT')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
+        try:
             await db.execute('ALTER TABLE events ADD COLUMN platform TEXT DEFAULT "goandance"')
             await db.commit()
         except aiosqlite.OperationalError:
             pass  # Column already exists
+
+        # Clean up any orphaned events whose job_id was deleted
+        try:
+            await db.execute("DELETE FROM events WHERE job_id NOT IN (SELECT id FROM jobs)")
+            await db.commit()
+        except Exception:
+            pass
 
 async def insert_event(event_dict: dict) -> int | None:
     """Insert a new event. Returns the inserted ID or None if duplicate hash."""

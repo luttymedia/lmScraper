@@ -63,9 +63,11 @@ async def _run_scheduled_job(schedule_id: str) -> None:
                 'next_run_at': next_fire.isoformat() if next_fire else None
             })
 
+        dance_style = sched.get('dance_style') or (sched.get('filters') or {}).get('dance_style')
         job_dict = {
             'url': sched['url'],
             'platform': sched.get('platform', 'goandance'),
+            'dance_style': dance_style,
             'filters': sched.get('filters', {}),
             'schedule_id': schedule_id
         }
@@ -75,6 +77,7 @@ async def _run_scheduled_job(schedule_id: str) -> None:
             job_id=job_id,
             url=sched['url'],
             platform=sched.get('platform', 'goandance'),
+            dance_style=dance_style,
             filters=sched.get('filters', {}),
             schedule_id=schedule_id
         )

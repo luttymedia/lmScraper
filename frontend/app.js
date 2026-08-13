@@ -202,35 +202,37 @@ const dateToInput = document.getElementById('job-date-to');
 const locationInput = document.getElementById('job-location');
 const locationSuggestions = document.getElementById('job-location-suggestions');
 
-// Sync URL -> Form Inputs
-urlInput.addEventListener('input', () => {
-  const url = urlInput.value;
-  if (!url) return;
-  try {
-    const urlObj = new URL(url);
-    const params = new URLSearchParams(urlObj.search);
-    
-    // Check for ?styles= or ?styles[]= 
-    let styleVal = params.get('styles') || params.get('styles[]');
-    if (styleVal) {
-      styleInput.value = styleVal.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    }
-    // Sync address param back to the location input
-    const addressVal = params.get('address');
-    if (addressVal) {
-      locationInput.value = addressVal;
-    }
-    // Sync date params back to date inputs
-    const fromVal = params.get('from');
-    if (fromVal) {
-      dateFromInput.value = fromVal;
-    }
-    const toVal = params.get('to');
-    if (toVal) {
-      dateToInput.value = toVal;
-    }
-  } catch (e) {}
-});
+function setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, locationInput, locationSuggestions) {
+  if (!urlInput) return;
+  // Sync URL -> Form Inputs
+  urlInput.addEventListener('input', () => {
+    const url = urlInput.value;
+    if (!url) return;
+    try {
+      const urlObj = new URL(url);
+      const params = new URLSearchParams(urlObj.search);
+      
+      // Check for ?styles= or ?styles[]= 
+      let styleVal = params.get('styles') || params.get('styles[]');
+      if (styleVal && styleInput) {
+        styleInput.value = styleVal.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      }
+      // Sync address param back to the location input
+      const addressVal = params.get('address');
+      if (addressVal && locationInput) {
+        locationInput.value = addressVal;
+      }
+      // Sync date params back to date inputs
+      const fromVal = params.get('from');
+      if (fromVal && dateFromInput) {
+        dateFromInput.value = fromVal;
+      }
+      const toVal = params.get('to');
+      if (toVal && dateToInput) {
+        dateToInput.value = toVal;
+      }
+    } catch (e) {}
+  });
 
 // Copy & Clear URL buttons
 const btnCopyUrl = document.getElementById('btn-copy-url');
@@ -263,135 +265,177 @@ btnClearUrl?.addEventListener('click', () => {
   showToast('Target URL cleared', 'info');
 });
 
-// Sync Style -> URL
-styleInput.addEventListener('input', () => {
-  const val = styleInput.value.trim();
-  let base = urlInput.value.trim() || 'https://www.goandance.com/es/eventos';
-  try {
-    const urlObj = new URL(base);
-    const params = new URLSearchParams(urlObj.search);
-    if (val) {
-      const formattedStyle = val.toLowerCase().replace(/\s+/g, '-');
-      params.delete('styles[]');
-      params.set('styles', formattedStyle);
-    } else {
-      params.delete('styles');
-      params.delete('styles[]');
-    }
-    urlObj.search = params.toString();
-    urlInput.value = urlObj.toString();
-  } catch (e) {}
-});
-
-// Sync Dates -> URL
-function syncDatesToUrl() {
-  const fromVal = dateFromInput.value;
-  const toVal = dateToInput.value;
-  let base = urlInput.value.trim() || 'https://www.goandance.com/es/eventos';
-  try {
-    const urlObj = new URL(base);
-    const params = new URLSearchParams(urlObj.search);
-    if (fromVal || toVal) {
-      params.set('period', 'custom');
-      if (fromVal) params.set('from', fromVal);
-      else params.delete('from');
-      if (toVal) params.set('to', toVal);
-      else params.delete('to');
-    } else {
-      params.delete('period');
-      params.delete('from');
-      params.delete('to');
-    }
-    urlObj.search = params.toString();
-    urlInput.value = urlObj.toString();
-  } catch (e) {}
-}
-
-dateFromInput?.addEventListener('change', syncDatesToUrl);
-dateFromInput?.addEventListener('input', syncDatesToUrl);
-dateToInput?.addEventListener('change', syncDatesToUrl);
-dateToInput?.addEventListener('input', syncDatesToUrl);
-
-// ── Location Autocomplete ──────────────────────────────────────────────────────
-
-const SUGGESTION_ITEM_STYLE = `
-  padding: 8px 14px; cursor: pointer; font-size: 0.85rem;
-  color: var(--text-primary); border-radius: 6px; margin: 0 4px;
-  transition: background 0.15s;
-`;
-
-function setLocationSuggestionUrl(primary, countryCode, country) {
-  // Inject address + country params into the target URL
-  let base = urlInput.value.trim() || 'https://www.goandance.com/es/eventos';
-  try {
-    const urlObj = new URL(base);
-    const params = new URLSearchParams(urlObj.search);
-    params.set('address', primary);
-    if (countryCode) params.set('country', countryCode);
-    // Remove 'q' if accidentally set before
-    params.delete('q');
-    urlObj.search = params.toString();
-    urlInput.value = urlObj.toString();
-  } catch (e) {}
-}
-
-function hideSuggestions() {
-  locationSuggestions.style.display = 'none';
-  locationSuggestions.innerHTML = '';
-}
-
-function showSuggestions(results) {
-  locationSuggestions.innerHTML = '';
-  if (!results.length) { hideSuggestions(); return; }
-  results.forEach(r => {
-    const li = document.createElement('li');
-    li.style.cssText = SUGGESTION_ITEM_STYLE;
-    li.innerHTML = `
-      <span style="font-weight:500">${r.primary}</span>
-      <span style="color:var(--text-muted); margin-left:6px; font-size:0.78rem">${r.label !== r.primary ? r.label : ''}</span>
-      ${r.country_code ? `<span style="float:right; font-size:0.72rem; color:var(--text-muted); background:var(--surface); padding:1px 5px; border-radius:4px;">${r.country_code}</span>` : ''}
-    `;
-    li.addEventListener('mouseenter', () => li.style.background = 'var(--surface)');
-    li.addEventListener('mouseleave', () => li.style.background = 'transparent');
-    li.addEventListener('mousedown', (e) => {
-      // mousedown fires before blur so we can capture before dropdown closes
-      e.preventDefault();
-      locationInput.value = r.primary;
-      setLocationSuggestionUrl(r.primary, r.country_code, r.country);
-      hideSuggestions();
-    });
-    locationSuggestions.appendChild(li);
-  });
-  locationSuggestions.style.display = 'block';
-}
-
-let _locationDebounce = null;
-locationInput?.addEventListener('input', () => {
-  clearTimeout(_locationDebounce);
-  const q = locationInput.value.trim();
-  if (q.length < 2) { hideSuggestions(); return; }
-  _locationDebounce = setTimeout(async () => {
+  // Sync Style -> URL
+  styleInput?.addEventListener('input', () => {
+    const val = styleInput.value.trim();
+    let base = urlInput.value.trim() || 'https://www.goandance.com/es/eventos';
     try {
-      const res = await fetch(`/api/location-suggest?q=${encodeURIComponent(q)}`);
-      const data = await res.json();
-      showSuggestions(data);
-    } catch (e) { hideSuggestions(); }
-  }, 300);
-});
+      const urlObj = new URL(base);
+      const params = new URLSearchParams(urlObj.search);
+      if (val) {
+        const formattedStyle = val.toLowerCase().replace(/\s+/g, '-');
+        params.delete('styles[]');
+        params.set('styles', formattedStyle);
+      } else {
+        params.delete('styles');
+        params.delete('styles[]');
+      }
+      urlObj.search = params.toString();
+      urlInput.value = urlObj.toString();
+    } catch (e) {}
+  });
 
-locationInput?.addEventListener('blur', () => {
-  // Small delay to allow mousedown on suggestion to fire first
-  setTimeout(hideSuggestions, 150);
-});
+  // Sync Dates -> URL
+  function syncDatesToUrl() {
+    const fromVal = dateFromInput ? dateFromInput.value : '';
+    const toVal = dateToInput ? dateToInput.value : '';
+    let base = urlInput.value.trim() || 'https://www.goandance.com/es/eventos';
+    try {
+      const urlObj = new URL(base);
+      const params = new URLSearchParams(urlObj.search);
+      if (fromVal || toVal) {
+        params.set('period', 'custom');
+        if (fromVal) params.set('from', fromVal);
+        else params.delete('from');
+        if (toVal) params.set('to', toVal);
+        else params.delete('to');
+      } else {
+        params.delete('period');
+        params.delete('from');
+        params.delete('to');
+      }
+      urlObj.search = params.toString();
+      urlInput.value = urlObj.toString();
+    } catch (e) {}
+  }
 
-locationInput?.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') hideSuggestions();
-  if (e.key === 'Enter') {
-    const first = locationSuggestions.querySelector('li');
-    if (first) first.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+  dateFromInput?.addEventListener('change', syncDatesToUrl);
+  dateFromInput?.addEventListener('input', syncDatesToUrl);
+  dateToInput?.addEventListener('change', syncDatesToUrl);
+  dateToInput?.addEventListener('input', syncDatesToUrl);
+
+  // ── Location Autocomplete ──────────────────────────────────────────────────────
+  const SUGGESTION_ITEM_STYLE = `
+    padding: 8px 14px; cursor: pointer; font-size: 0.85rem;
+    color: var(--text-primary); border-radius: 6px; margin: 0 4px;
+    transition: background 0.15s;
+  `;
+
+  function setLocationSuggestionUrl(primary, countryCode, country) {
+    let base = urlInput.value.trim() || 'https://www.goandance.com/es/eventos';
+    try {
+      const urlObj = new URL(base);
+      const params = new URLSearchParams(urlObj.search);
+      params.set('address', primary);
+      if (countryCode) params.set('country', countryCode);
+      params.delete('q');
+      urlObj.search = params.toString();
+      urlInput.value = urlObj.toString();
+    } catch (e) {}
+  }
+
+  function hideSuggestions() {
+    if (!locationSuggestions) return;
+    locationSuggestions.style.display = 'none';
+    locationSuggestions.innerHTML = '';
+  }
+
+  function showSuggestions(results) {
+    if (!locationSuggestions) return;
+    locationSuggestions.innerHTML = '';
+    if (!results.length) { hideSuggestions(); return; }
+    results.forEach(r => {
+      const li = document.createElement('li');
+      li.style.cssText = SUGGESTION_ITEM_STYLE;
+      li.innerHTML = `
+        <span style="font-weight:500">${r.primary}</span>
+        <span style="color:var(--text-muted); margin-left:6px; font-size:0.78rem">${r.label !== r.primary ? r.label : ''}</span>
+        ${r.country_code ? `<span style="float:right; font-size:0.72rem; color:var(--text-muted); background:var(--surface); padding:1px 5px; border-radius:4px;">${r.country_code}</span>` : ''}
+      `;
+      li.addEventListener('mouseenter', () => li.style.background = 'var(--surface)');
+      li.addEventListener('mouseleave', () => li.style.background = 'transparent');
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        locationInput.value = r.primary;
+        setLocationSuggestionUrl(r.primary, r.country_code, r.country);
+        hideSuggestions();
+      });
+      locationSuggestions.appendChild(li);
+    });
+    locationSuggestions.style.display = 'block';
+  }
+
+  let _locationDebounce = null;
+  locationInput?.addEventListener('input', () => {
+    clearTimeout(_locationDebounce);
+    const q = locationInput.value.trim();
+    if (q.length < 2) { hideSuggestions(); return; }
+    _locationDebounce = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/location-suggest?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        showSuggestions(data);
+      } catch (e) { hideSuggestions(); }
+    }, 300);
+  });
+
+  locationInput?.addEventListener('blur', () => {
+    setTimeout(hideSuggestions, 150);
+  });
+
+  locationInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideSuggestions();
+    if (e.key === 'Enter') {
+      const first = locationSuggestions?.querySelector('li');
+      if (first) first.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+    }
+  });
+}
+
+// Bind for New Job
+setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, locationInput, locationSuggestions);
+
+// Bind for Scheduler
+const schedUrlInput = document.getElementById('sched-url');
+const schedStyleInput = document.getElementById('sched-dance-style');
+const schedDateFromInput = document.getElementById('sched-date-from');
+const schedDateToInput = document.getElementById('sched-date-to');
+const schedLocationInput = document.getElementById('sched-city');
+const schedLocationSuggestions = document.getElementById('sched-city-suggestions');
+
+setupUrlSync(schedUrlInput, schedStyleInput, schedDateFromInput, schedDateToInput, schedLocationInput, schedLocationSuggestions);
+
+// Copy & Clear URL buttons for Scheduler
+const btnCopySchedUrl = document.getElementById('btn-copy-sched-url');
+const btnClearSchedUrl = document.getElementById('btn-clear-sched-url');
+
+btnCopySchedUrl?.addEventListener('click', async () => {
+  const val = schedUrlInput?.value.trim();
+  if (!val) {
+    showToast('Target URL is empty', 'warning');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(val);
+    showToast('URL copied to clipboard', 'success');
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = val;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('URL copied to clipboard', 'success');
   }
 });
 
+btnClearSchedUrl?.addEventListener('click', () => {
+  if (!schedUrlInput) return;
+  schedUrlInput.value = '';
+  schedUrlInput.dispatchEvent(new Event('input'));
+  schedUrlInput.focus();
+  showToast('Target URL cleared', 'info');
+});
 
 UI.btnStart.addEventListener('click', async () => {
   const url = document.getElementById('job-url').value;
@@ -821,6 +865,20 @@ async function loadJobHistory() {
         ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">${filterTags.join('')}</div>`
         : `<div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px;">No filter parameters</div>`;
 
+      let durationStr = 'N/A';
+      if (job.started_at) {
+        const start = new Date(job.started_at).getTime();
+        const end = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
+        const diffSecs = Math.floor((end - start) / 1000);
+        if (diffSecs < 60) {
+          durationStr = `${diffSecs}s`;
+        } else {
+          const m = Math.floor(diffSecs / 60);
+          const s = diffSecs % 60;
+          durationStr = `${m}m ${s}s`;
+        }
+      }
+
       const card = document.createElement('div');
       card.className = 'card';
       card.innerHTML = `
@@ -846,13 +904,17 @@ async function loadJobHistory() {
         </div>
 
         ${filterHtml}
-        <div class="grid grid-cols-2" style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:16px;">
+        <div class="grid grid-cols-2" style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:16px; gap:8px;">
           <div>Events found: <strong style="color:var(--text-primary)">${job.events_found || 0}</strong></div>
           <div>New: <strong style="color:var(--success)">${job.events_new || 0}</strong></div>
+          <div>Duration: <strong style="color:var(--text-primary)">${durationStr}</strong></div>
         </div>
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap;">
           <button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="viewJobResults('${job.id}')">${ICONS.chart} View Results</button>
-          <button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="rerunJob('${job.id}')">${ICONS.repeat} Rerun</button>
+          ${job.status === 'running' || job.status === 'pending'
+            ? `<button class="btn btn-danger btn-sm" style="white-space:nowrap; background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;" onclick="cancelJobHistory('${job.id}')">${ICONS.pause} Stop</button>`
+            : `<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="rerunJob('${job.id}')">${ICONS.repeat} Rerun</button>`
+          }
           <button class="btn btn-danger btn-sm" style="white-space:nowrap;" onclick="deleteJob('${job.id}')">${ICONS.trash} Delete</button>
         </div>
       `;
@@ -926,7 +988,22 @@ window.rerunJob = async (jobId) => {
       UI.btnStart.click();
     }, 300);
   } catch (e) {
-    showToast('Failed to re-run job: ' + e.message, 'error');
+    showToast('Failed to prepare rerun job', 'error');
+  }
+};
+
+window.cancelJobHistory = async (jobId) => {
+  const confirmed = await confirmAction('Are you sure you want to stop this running job?');
+  if (!confirmed) return;
+
+  try {
+    const res = await api(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
+    if (res.status === 'cancelled' || res.status === 'failed') {
+      showToast('Job cancelled successfully', 'success');
+      loadJobHistory();
+    }
+  } catch (e) {
+    showToast('Failed to cancel job', 'error');
   }
 };
 
@@ -1187,11 +1264,13 @@ let currentEditingScheduleId = null;
 function resetScheduleForm() {
   currentEditingScheduleId = null;
   document.getElementById('sched-label').value = '';
-  document.getElementById('sched-url').value = '';
+  document.getElementById('sched-url').value = 'https://www.goandance.com/es/eventos';
   document.getElementById('sched-date-from').value = '';
   document.getElementById('sched-date-to').value = '';
   document.getElementById('sched-city').value = '';
   document.getElementById('sched-keyword').value = '';
+  const schedDanceStyle = document.getElementById('sched-dance-style');
+  if (schedDanceStyle) schedDanceStyle.value = '';
   document.getElementById('sched-cron').value = '0 9 * * *';
   
   const summaryEl = document.getElementById('sched-cron-summary');
@@ -1229,6 +1308,8 @@ window.editSchedule = async (id) => {
     document.getElementById('sched-date-to').value = filters.date_to || '';
     document.getElementById('sched-city').value = filters.city || '';
     document.getElementById('sched-keyword').value = filters.keyword || '';
+    const schedDanceStyle = document.getElementById('sched-dance-style');
+    if (schedDanceStyle) schedDanceStyle.value = sched.dance_style || filters.dance_style || '';
     
     document.getElementById('sched-cron').value = sched.cron_expression || '0 9 * * *';
     const summaryEl = document.getElementById('sched-cron-summary');
@@ -1269,6 +1350,7 @@ document.getElementById('btn-create-schedule').addEventListener('click', async (
     label: document.getElementById('sched-label').value,
     url: document.getElementById('sched-url').value,
     platform: document.querySelector('input[name="sched_platform"]:checked')?.value || 'goandance',
+    dance_style: document.getElementById('sched-dance-style')?.value || null,
     cron_expression: document.getElementById('sched-cron').value,
     filters: {
       date_from: document.getElementById('sched-date-from').value || null,

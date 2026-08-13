@@ -298,14 +298,34 @@
           </div>
           <div class="form-group" style="grid-column: span 2;">
             <label>Target URL</label>
-            <input type="url" id="sched-url" class="input" placeholder="https://...">
+            <div style="position: relative; display: flex; align-items: center;">
+              <input type="url" id="sched-url" class="input" value="https://www.goandance.com/es/eventos" placeholder="https://www.goandance.com/es/eventos" style="padding-right: 80px; width: 100%;">
+              <div style="position: absolute; right: 10px; display: flex; align-items: center; gap: 4px;">
+                <button type="button" id="btn-copy-sched-url" class="icon-btn" title="Copy Target URL">
+                  <i data-lucide="copy"></i>
+                </button>
+                <button type="button" id="btn-clear-sched-url" class="icon-btn" title="Clear Target URL">
+                  <i data-lucide="x"></i>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="grid grid-cols-4 mt-4">
+        <div class="grid" style="grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 16px;">
           <div class="form-group"><label>Date From</label><input type="date" id="sched-date-from" class="input"></div>
           <div class="form-group"><label>Date To</label><input type="date" id="sched-date-to" class="input"></div>
-          <div class="form-group"><label>City</label><input type="text" id="sched-city" class="input"></div>
-          <div class="form-group"><label>Keyword</label><input type="text" id="sched-keyword" class="input"></div>
+          <div class="form-group">
+            <label>Location / City</label>
+            <div style="position:relative;">
+              <input type="text" id="sched-city" class="input" placeholder="e.g. Madrid" autocomplete="off">
+              <ul id="sched-city-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:200; background:var(--surface-elevated); border:1px solid var(--border); border-radius:8px; margin-top:4px; padding:4px 0; list-style:none; max-height:220px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,0.3);"></ul>
+            </div>
+          </div>
+          <div class="form-group"><label>Keyword</label><input type="text" id="sched-keyword" class="input" placeholder="e.g. Workshops"></div>
+          <div class="form-group">
+            <label>Dance Style <span data-tooltip="Optional tag for all scraped events"><i data-lucide="info" class="icon-sm"></i></span></label>
+            <input type="text" id="sched-dance-style" class="input" placeholder="e.g. Bachata">
+          </div>
         </div>
         <div class="mt-4">
           <label>Schedule Timing</label>
@@ -685,7 +705,7 @@
 
   <div id="toast-container"></div>
 
-  <script type="module" src="app.js?v=30"></script>
+  <script type="module" src="app.js?v=33"></script>
   <script>lucide.createIcons();</script>
 </body>
 

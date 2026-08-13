@@ -24,6 +24,6 @@ REM ── Open browser after 2 seconds ─────────────�
 start /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:8000"
 
 REM ── Start FastAPI server ─────────────────────────────────────────────────────
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+python run_server.py
 
 pause

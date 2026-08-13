@@ -11,7 +11,7 @@ DATA_DIR = PROJECT_ROOT / 'data'
 HTML_CACHE_DIR = DATA_DIR / 'html_cache'
 EXPORTS_DIR = DATA_DIR / 'exports'
 
-def get_dir_size(path: Path) -> int:
+def _get_dir_size_sync(path: Path) -> int:
     """Calculate total size of directory in bytes."""
     total_size = 0
     if not path.exists():
@@ -23,12 +23,16 @@ def get_dir_size(path: Path) -> int:
                 total_size += os.path.getsize(fp)
     return total_size
 
+async def get_dir_size(path: Path) -> int:
+    import asyncio
+    return await asyncio.to_thread(_get_dir_size_sync, path)
+
 async def get_stats() -> dict:
     """Get complete storage stats and alerts."""
     db_stats = await get_db_stats()
     
-    html_cache_bytes = get_dir_size(HTML_CACHE_DIR)
-    exports_bytes = get_dir_size(EXPORTS_DIR)
+    html_cache_bytes = await get_dir_size(HTML_CACHE_DIR)
+    exports_bytes = await get_dir_size(EXPORTS_DIR)
     
     stats = {
         "event_count": db_stats["event_count"],
@@ -125,7 +129,7 @@ async def compress_html_caches() -> dict:
         
     for job_dir in HTML_CACHE_DIR.iterdir():
         if job_dir.is_dir():
-            dir_size = get_dir_size(job_dir)
+            dir_size = await get_dir_size(job_dir)
             zip_path = f"{job_dir}.zip"
             
             # Create zip
@@ -181,6 +185,35 @@ async def delete_job_cache(job_id: str) -> dict:
     job_dir = HTML_CACHE_DIR / job_id
     freed_bytes = 0
     if job_dir.exists() and job_dir.is_dir():
-        freed_bytes = get_dir_size(job_dir)
+        freed_bytes = await get_dir_size(job_dir)
         shutil.rmtree(job_dir)
     return {"freed_bytes": freed_bytes}
+
+async def purge_all() -> dict:
+    """Delete ALL events, jobs, and clear the HTML cache completely."""
+    freed_bytes = 0
+    deleted_jobs = 0
+    deleted_events = 0
+    
+    async with get_db() as db:
+        # Delete all events
+        cursor = await db.execute("DELETE FROM events")
+        deleted_events = cursor.rowcount
+        
+        # Delete all jobs
+        cursor = await db.execute("DELETE FROM jobs")
+        deleted_jobs = cursor.rowcount
+        
+        await db.commit()
+        
+    # Clear HTML Cache
+    if HTML_CACHE_DIR.exists():
+        freed_bytes = await get_dir_size(HTML_CACHE_DIR)
+        shutil.rmtree(HTML_CACHE_DIR)
+        HTML_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        
+    return {
+        "deleted_events": deleted_events,
+        "deleted_jobs": deleted_jobs,
+        "freed_bytes": freed_bytes
+    }

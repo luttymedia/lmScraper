@@ -17,17 +17,37 @@ async def get_events_df(filters: dict) -> pd.DataFrame:
         
     cols = [
         'title', 'date_start', 'date_end', 'city', 'country', 'venue', 'price',
-        'category', 'organizer_name', 'organizer_email', 'organizer_phone',
+        'event_type', 'dance_style', 'organizer_name', 'organizer_email', 'organizer_phone',
         'organizer_instagram', 'organizer_facebook', 'organizer_tiktok',
         'organizer_whatsapp', 'organizer_youtube', 'organizer_twitter',
-        'organizer_website', 'contact_hidden', 'event_url', 'source_domain', 'scraped_at'
+        'organizer_website', 'contact_hidden', 'event_url', 'source_domain', 'platform', 'scraped_at'
     ]
     
-    df = pd.DataFrame(events)
+    events_export = []
+    for event in events:
+        e = dict(event)
+        e['event_type'] = e.get('category')
+        events_export.append(e)
+        
+    df = pd.DataFrame(events_export)
     # Ensure all required columns exist
     for col in cols:
         if col not in df.columns:
             df[col] = ''
+            
+    # Format dates to European format DD/MM/YYYY HH:MM
+    def format_iso_date(val):
+        if not val:
+            return ""
+        try:
+            return pd.to_datetime(val).strftime("%d/%m/%Y %H:%M")
+        except:
+            return val
+            
+    if 'date_start' in df.columns:
+        df['date_start'] = df['date_start'].apply(format_iso_date)
+    if 'date_end' in df.columns:
+        df['date_end'] = df['date_end'].apply(format_iso_date)
             
     # Reorder columns
     df = df[cols]

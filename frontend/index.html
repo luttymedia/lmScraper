@@ -1,46 +1,80 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LMScraper — Event Scraping Panel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono&display=swap"
+    rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="style.css?v=15">
 </head>
+
 <body>
-  
+
   <aside class="sidebar" id="sidebar">
-    <h1>LMScraper</h1>
+    <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom: 8px;">
+      <h1 style="margin:0;">LMScraper</h1>
+      <button class="badge badge-done" id="btn-version" title="View Version & Changelog"
+        style="cursor: pointer; border: none; font-weight: 600; padding: 4px 8px; font-size: 0.75rem;">v1.1.0</button>
+    </div>
     <nav>
-      <a href="#" class="nav-item active" data-target="section-new-job">➕ New Job</a>
-      <a href="#" class="nav-item" data-target="section-results">📊 Results</a>
-      <a href="#" class="nav-item" data-target="section-job-history">⏱ Job History</a>
-      <a href="#" class="nav-item" data-target="section-scheduler">📅 Scheduler</a>
-      <a href="#" class="nav-item" data-target="section-sessions">🍪 Saved Sessions</a>
+      <a href="#" class="nav-item active" data-target="section-new-job"><i data-lucide="plus-circle"
+          class="nav-icon"></i> New Job</a>
+      <a href="#" class="nav-item" data-target="section-results"><i data-lucide="bar-chart-2" class="nav-icon"></i>
+        Results</a>
+      <a href="#" class="nav-item" data-target="section-job-history"><i data-lucide="clock" class="nav-icon"></i> Job
+        History</a>
+      <a href="#" class="nav-item" data-target="section-scheduler"><i data-lucide="calendar" class="nav-icon"></i>
+        Scheduler</a>
+      <a href="#" class="nav-item" data-target="section-sessions"><i data-lucide="key" class="nav-icon"></i> Saved
+        Sessions</a>
     </nav>
   </aside>
 
-  <button class="mobile-nav-toggle" id="mobile-nav-toggle">☰</button>
+  <button class="mobile-nav-toggle" id="mobile-nav-toggle"><i data-lucide="menu" class="icon-sm"></i></button>
 
   <main class="main-content">
     <div class="alert-banner hidden" id="alert-banner">
       <span id="alert-banner-text">Alert message</span>
-      <button class="btn btn-sm btn-ghost" id="btn-close-alert">✕</button>
+      <button class="btn btn-sm btn-ghost" id="btn-close-alert"><i data-lucide="x" class="icon-sm"></i></button>
     </div>
 
     <!-- Section 1: New Job -->
     <section class="section active" id="section-new-job">
       <h2 class="section-title">Start New Scraping Job</h2>
-      
+
       <div class="card">
         <div class="form-group">
-          <label>Target URL</label>
-          <input type="url" id="job-url" class="input btn-lg" placeholder="https://www.goandance.com/es/eventos" data-tooltip="Enter the full URL of an event listing page">
+          <label>Platform</label>
+          <div style="display: flex; gap: 16px; margin-top: 8px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+              <input type="radio" name="job_platform" value="goandance" checked> Go&Dance
+            </label>
+            <!-- Add future platforms here -->
+          </div>
         </div>
-        
-        <div class="grid grid-cols-4 mt-4">
+        <div class="form-group mt-4">
+          <label>Target URL</label>
+          <div style="position: relative; display: flex; align-items: center;">
+            <input type="url" id="job-url" class="input btn-lg" value="https://www.goandance.com/es/eventos"
+              placeholder="https://www.goandance.com/es/eventos"
+              data-tooltip="Enter the full URL of an event listing page" style="padding-right: 80px; width: 100%;">
+            <div style="position: absolute; right: 10px; display: flex; align-items: center; gap: 4px;">
+              <button type="button" id="btn-copy-url" class="icon-btn" title="Copy Target URL">
+                <i data-lucide="copy"></i>
+              </button>
+              <button type="button" id="btn-clear-url" class="icon-btn" title="Clear Target URL">
+                <i data-lucide="x"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid" style="grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 16px;">
           <div class="form-group">
             <label>Date From</label>
             <input type="date" id="job-date-from" class="input">
@@ -51,16 +85,31 @@
           </div>
           <div class="form-group">
             <label>Location / City</label>
-            <input type="text" id="job-location" class="input" placeholder="e.g. Madrid">
+            <div style="position:relative;">
+              <input type="text" id="job-location" class="input" placeholder="e.g. Madrid" autocomplete="off">
+              <ul id="job-location-suggestions" style="
+                display:none; position:absolute; top:100%; left:0; right:0; z-index:200;
+                background:var(--surface-elevated); border:1px solid var(--border);
+                border-radius:8px; margin-top:4px; padding:4px 0;
+                list-style:none; max-height:220px; overflow-y:auto;
+                box-shadow:0 8px 24px rgba(0,0,0,0.3);
+              "></ul>
+            </div>
           </div>
           <div class="form-group">
-            <label>Keyword / Category</label>
-            <input type="text" id="job-keyword" class="input" placeholder="e.g. Salsa">
+            <label>Keyword</label>
+            <input type="text" id="job-keyword" class="input" placeholder="e.g. Workshops">
+          </div>
+          <div class="form-group">
+            <label>Dance Style <span data-tooltip="Optional tag for all scraped events"><i data-lucide="info"
+                  class="icon-sm"></i></span></label>
+            <input type="text" id="job-dance-style" class="input" placeholder="e.g. Bachata">
           </div>
         </div>
 
         <div class="mt-4">
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--text-secondary); font-size:0.875rem;">
+          <label
+            style="display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--text-secondary); font-size:0.875rem;">
             <label class="toggle">
               <input type="checkbox" id="toggle-advanced">
               <span class="toggle-slider"></span>
@@ -69,39 +118,51 @@
           </label>
         </div>
 
-        <div id="advanced-settings" class="hidden mt-4 grid grid-cols-2" style="padding: 16px; background: var(--surface-elevated); border-radius: var(--radius-card);">
+        <div id="advanced-settings" class="hidden mt-4 grid grid-cols-2"
+          style="padding: 16px; background: var(--surface-elevated); border-radius: var(--radius-card);">
           <div class="form-group">
-            <label>Proxy URL</label>
-            <input type="text" id="job-proxy" class="input" placeholder="http://user:pass@host:port" data-tooltip="Optional. Format: http://user:pass@host:port">
+            <label>Proxy URL <span
+                data-tooltip="Routes scraper traffic through an external server to mask IP. Format: http://user:pass@host:port"><i
+                  data-lucide="info" class="icon-sm"></i></span></label>
+            <input type="text" id="job-proxy" class="input" placeholder="http://user:pass@host:port">
           </div>
           <div class="form-group">
-            <label>Saved Session (Cookies)</label>
-            <select id="select-session" class="select" data-tooltip="Use an authenticated session">
+            <label>Saved Session (Cookies) <span data-tooltip="Use an authenticated session"><i data-lucide="info"
+                  class="icon-sm"></i></span></label>
+            <select id="select-session" class="select">
               <option value="">None</option>
             </select>
           </div>
           <div class="form-group">
-            <label>Request Delay (ms)</label>
+            <label>Request Delay (ms) <span
+                data-tooltip="Min and max delay between requests to simulate human behavior"><i data-lucide="info"
+                  class="icon-sm"></i></span></label>
             <div style="display:flex; gap:8px;">
-              <input type="number" id="job-delay-min" class="input" placeholder="Min" value="1000" style="width:50%">
-              <input type="number" id="job-delay-max" class="input" placeholder="Max" value="3000" style="width:50%">
+              <input type="number" id="job-delay-min" class="input" placeholder="Min" value="1500" style="width:50%">
+              <input type="number" id="job-delay-max" class="input" placeholder="Max" value="4000" style="width:50%">
             </div>
           </div>
           <div class="form-group">
-            <label>Concurrency: <span id="concurrency-val">2</span> <span data-tooltip="Higher = faster scraping, but more likely to be blocked. Start at 2.">ℹ️</span></label>
+            <label>Concurrency: <span id="concurrency-val">2</span> <span
+                data-tooltip="Higher = faster scraping, but more likely to be blocked. Start at 2."><i
+                  data-lucide="info" class="icon-sm"></i></span></label>
             <div class="slider-wrapper" style="margin-top: 8px;">
-              <span style="font-size:0.75rem; color:var(--text-muted)">Stealth</span>
+              <span style="font-size:0.75rem; color:var(--text-secondary)">Stealth</span>
               <input type="range" id="job-concurrency" class="slider" min="1" max="5" value="2">
-              <span style="font-size:0.75rem; color:var(--text-muted)">Speed</span>
+              <span style="font-size:0.75rem; color:var(--text-secondary)">Speed</span>
             </div>
           </div>
         </div>
 
         <div class="mt-4" style="display: flex; gap: 12px; margin-top: 24px;">
-          <button class="btn btn-primary btn-lg" id="btn-start-job">🚀 Start Scraping</button>
-          <button class="btn btn-secondary btn-lg hidden" id="btn-pause-job">⏸ Pause</button>
-          <button class="btn btn-secondary btn-lg hidden" id="btn-resume-job">▶ Resume</button>
-          <button class="btn btn-danger btn-lg hidden" id="btn-stop-job">⏹ Stop</button>
+          <button class="btn btn-primary btn-lg" id="btn-start-job"><i data-lucide="play" class="icon-inline"></i> Start
+            Scraping</button>
+          <button class="btn btn-secondary btn-lg hidden" id="btn-pause-job"><i data-lucide="pause"
+              class="icon-inline"></i> Pause</button>
+          <button class="btn btn-secondary btn-lg hidden" id="btn-resume-job"><i data-lucide="play"
+              class="icon-inline"></i> Resume</button>
+          <button class="btn btn-danger btn-lg hidden" id="btn-stop-job"><i data-lucide="square"
+              class="icon-inline"></i> Stop</button>
         </div>
       </div>
 
@@ -110,7 +171,8 @@
         <div class="progress-container">
           <div class="progress-header">
             <span>Processed: <span id="progress-processed">0</span> / <span id="progress-total">0</span></span>
-            <span>New: <span id="progress-new" style="color:var(--success)">0</span> | Skipped: <span id="progress-skipped" style="color:var(--text-muted)">0</span></span>
+            <span>New: <span id="progress-new" style="color:var(--success)">0</span> | Skipped: <span
+                id="progress-skipped" style="color:var(--text-muted)">0</span></span>
           </div>
           <div class="progress-track">
             <div class="progress-bar" id="progress-bar"></div>
@@ -131,8 +193,10 @@
             <option value="50">50 per page</option>
             <option value="100">100 per page</option>
           </select>
-          <button class="btn btn-secondary btn-sm" id="btn-export-csv">📥 CSV</button>
-          <button class="btn btn-secondary btn-sm" id="btn-export-xlsx">📥 XLSX</button>
+          <button class="btn btn-secondary btn-sm" id="btn-export-csv"><i data-lucide="download" class="icon-sm"></i>
+            CSV</button>
+          <button class="btn btn-secondary btn-sm" id="btn-export-xlsx"><i data-lucide="download" class="icon-sm"></i>
+            XLSX</button>
         </div>
       </div>
 
@@ -151,21 +215,24 @@
         </select>
         <select id="filter-hidden-contact" class="select btn-sm">
           <option value="">Hidden Contact: Any</option>
-          <option value="true">Yes (🔒)</option>
+          <option value="true">Yes (Hidden)</option>
         </select>
         <button class="btn btn-primary btn-sm" id="btn-apply-filters">Apply</button>
         <button class="btn btn-ghost btn-sm" id="btn-reset-filters">Reset</button>
-        
+
         <div style="position: relative; margin-left: auto;">
-          <button class="btn btn-secondary btn-sm" id="btn-toggle-columns">⚙ Columns</button>
-          <div id="column-visibility-panel" class="card hidden" style="position: absolute; right: 0; top: 100%; margin-top: 8px; z-index: 20; min-width: 200px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <button class="btn btn-secondary btn-sm" id="btn-toggle-columns"><i data-lucide="sliders-horizontal"
+              class="icon-sm"></i> Columns</button>
+          <div id="column-visibility-panel" class="card hidden"
+            style="position: absolute; right: 0; top: 100%; margin-top: 8px; z-index: 20; min-width: 200px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
             <!-- populated by JS -->
           </div>
         </div>
       </div>
 
       <div class="mb-4 hidden" id="bulk-actions">
-        <button class="btn btn-danger btn-sm" id="btn-bulk-delete">🗑 Delete Selected</button>
+        <button class="btn btn-danger btn-sm" id="btn-bulk-delete"><i data-lucide="trash" class="icon-sm"></i> Delete
+          Selected</button>
       </div>
 
       <div class="table-wrapper">
@@ -190,7 +257,8 @@
     <section class="section" id="section-job-history">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
         <h2 class="section-title" style="margin:0;">Job History</h2>
-        <button class="btn btn-secondary btn-sm" id="btn-refresh-jobs">🔄 Refresh</button>
+        <button class="btn btn-secondary btn-sm" id="btn-refresh-jobs"><i data-lucide="refresh-cw" class="icon-sm"></i>
+          Refresh</button>
       </div>
       <div id="job-history-list" class="grid grid-cols-2">
         <!-- populated by JS -->
@@ -200,7 +268,7 @@
     <!-- Section 4: Scheduler -->
     <section class="section" id="section-scheduler">
       <h2 class="section-title">Task Scheduler</h2>
-      
+
       <div class="card">
         <h3 class="modal-header">Create Schedule</h3>
         <div class="grid grid-cols-2">
@@ -208,7 +276,16 @@
             <label>Label</label>
             <input type="text" id="sched-label" class="input" placeholder="Daily GoAndDance Scrape">
           </div>
-          <div class="form-group">
+          <div class="form-group" style="grid-column: span 2;">
+            <label>Platform</label>
+            <div style="display: flex; gap: 16px; margin-top: 8px;">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="radio" name="sched_platform" value="goandance" checked> Go&Dance
+              </label>
+              <!-- Add future platforms here -->
+            </div>
+          </div>
+          <div class="form-group" style="grid-column: span 2;">
             <label>Target URL</label>
             <input type="url" id="sched-url" class="input" placeholder="https://...">
           </div>
@@ -221,23 +298,40 @@
         </div>
         <div class="mt-4">
           <label>Schedule Timing</label>
-          <div style="display: flex; gap: 12px; margin-top: 8px; margin-bottom: 16px;">
-            <label class="btn btn-secondary btn-sm"><input type="radio" name="sched_preset" value="0 9 * * *" style="display:none"> Daily 9am</label>
-            <label class="btn btn-secondary btn-sm"><input type="radio" name="sched_preset" value="0 9 * * 1" style="display:none"> Weekly Mon</label>
-            <label class="btn btn-secondary btn-sm"><input type="radio" name="sched_preset" value="custom" style="display:none" checked> Custom Cron</label>
-          </div>
-          <div class="form-group" id="sched-cron-group">
-            <input type="text" id="sched-cron" class="input" placeholder="*/30 * * * *" data-tooltip="Standard cron expression (min hour day month dow)">
+          <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap;">
+            <div style="width: 240px;">
+              <input type="text" id="sched-cron" class="input" value="0 9 * * *" placeholder="0 9 * * *"
+                data-tooltip="Standard cron expression or one-time date (e.g. 2026-08-13T23:45)"
+                style="height: 38px; width: 100%;">
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-open-cron-builder"
+              style="display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px;">
+              <i data-lucide="clock" style="width: 14px; height: 14px; color: var(--success);"></i> Schedule Builder
+            </button>
+            <span id="sched-cron-summary"
+              style="font-size: 0.85rem; color: var(--success); font-weight: 500; white-space: nowrap;">Runs daily at 09:00</span>
           </div>
         </div>
-        <button class="btn btn-primary mt-4" id="btn-create-schedule">Create Schedule</button>
+
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border);">
+          <button class="btn btn-primary" id="btn-create-schedule" style="min-width: 150px;">Create Schedule</button>
+          <button type="button" class="btn btn-secondary hidden" id="btn-cancel-edit-schedule">Cancel Edit</button>
+          <span id="sched-edit-mode-badge" class="badge badge-running hidden"
+            style="font-size: 0.8rem; padding: 5px 10px;">Editing Mode</span>
+        </div>
       </div>
 
       <div class="table-wrapper mt-4">
         <table id="schedules-table">
           <thead>
             <tr>
-              <th>Label</th><th>URL</th><th>Schedule</th><th>Next Run</th><th>Last Run</th><th>Status</th><th>Actions</th>
+              <th>Label</th>
+              <th>URL</th>
+              <th>Schedule</th>
+              <th>Next Run</th>
+              <th>Last Run</th>
+              <th>Status</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="schedules-tbody"></tbody>
@@ -248,7 +342,7 @@
     <!-- Section 5: Saved Sessions -->
     <section class="section" id="section-sessions">
       <h2 class="section-title">Saved Sessions</h2>
-      
+
       <div class="card" style="background: rgba(245, 166, 35, 0.05); border-color: var(--accent-dim);">
         <h3 style="font-size: 1rem; margin-bottom: 8px;">How to extract cookies</h3>
         <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">
@@ -280,7 +374,12 @@
       <div class="table-wrapper mt-4">
         <table id="sessions-table">
           <thead>
-            <tr><th>Label</th><th>Domain</th><th>Created</th><th>Actions</th></tr>
+            <tr>
+              <th>Label</th>
+              <th>Domain</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
           </thead>
           <tbody id="sessions-tbody"></tbody>
         </table>
@@ -295,7 +394,8 @@
       <span>DB Size: <strong id="monitor-db-size">—</strong></span>
       <span>Cache Size: <strong id="monitor-cache-size">—</strong></span>
     </div>
-    <button class="btn btn-secondary btn-sm" id="btn-open-cleanup">🗑 Clean up</button>
+    <button class="btn btn-secondary btn-sm" id="btn-open-cleanup"><i data-lucide="trash-2" class="icon-sm"></i> Clean
+      up</button>
   </footer>
 
   <!-- Cleanup Modal -->
@@ -303,8 +403,9 @@
     <div class="modal">
       <h3 class="modal-header">System Cleanup</h3>
       <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
-        
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
           <div class="form-group" style="margin:0;">
             <label>Delete HTML cache older than (days)</label>
             <input type="number" id="cleanup-cache-days" class="input btn-sm" value="7" style="width: 100px;">
@@ -312,15 +413,17 @@
           <button class="btn btn-secondary btn-sm" id="btn-clean-cache-age">Clean Cache</button>
         </div>
 
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
           <div class="form-group" style="margin:0;">
             <label>Delete HTML cache larger than (MB)</label>
             <input type="number" id="cleanup-cache-mb" class="input btn-sm" value="500" style="width: 100px;">
           </div>
           <button class="btn btn-secondary btn-sm" id="btn-clean-cache-size">Clean Cache</button>
         </div>
-        
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
           <div class="form-group" style="margin:0;">
             <label>Delete unlinked events older than (days)</label>
             <input type="number" id="cleanup-events-days" class="input btn-sm" value="30" style="width: 100px;">
@@ -328,23 +431,28 @@
           <button class="btn btn-secondary btn-sm" id="btn-clean-events">Clean Events</button>
         </div>
 
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
           <span style="font-size:0.875rem; color:var(--text-secondary);">Compress all HTML caches (SQLite VACUUM)</span>
           <button class="btn btn-secondary btn-sm" id="btn-clean-compress">Compress</button>
         </div>
 
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
           <span style="font-size:0.875rem; color:var(--text-secondary);">Export full database backup</span>
           <div>
             <button class="btn btn-secondary btn-sm" id="btn-clean-backup">Backup DB</button>
-            <a id="backup-download-link" class="hidden" style="margin-left:8px; font-size:0.75rem; color:var(--accent);" href="" download>Download</a>
+            <a id="backup-download-link" class="hidden" style="margin-left:8px; font-size:0.75rem; color:var(--accent);"
+              href="" download>Download</a>
           </div>
         </div>
 
-        <div style="display:flex; justify-content:space-between; align-items:center; background: rgba(248, 113, 113, 0.05); padding: 12px; border-radius: var(--radius-btn); border: 1px solid rgba(248,113,113,0.2);">
+        <div
+          style="display:flex; justify-content:space-between; align-items:center; background: rgba(248, 113, 113, 0.05); padding: 12px; border-radius: var(--radius-card); border: 1px solid rgba(248,113,113,0.2);">
           <div class="form-group" style="margin:0;">
             <label style="color:var(--error);">Purge everything (Type DELETE)</label>
-            <input type="text" id="cleanup-purge-confirm" class="input btn-sm" placeholder="DELETE" style="width: 120px;">
+            <input type="text" id="cleanup-purge-confirm" class="input" placeholder="DELETE"
+              style="width: 120px; padding: 6px 12px; font-size: 0.875rem;">
           </div>
           <button class="btn btn-danger btn-sm" id="btn-clean-purge" disabled>PURGE ALL</button>
         </div>
@@ -370,8 +478,204 @@
     </div>
   </div>
 
+  <!-- Version & Changelog Modal -->
+  <div class="modal-overlay hidden" id="modal-version">
+    <div class="modal" style="max-width: 580px; padding: 28px 32px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--success); margin: 0;">LMScraper</h2>
+        <div style="margin-top: 6px;">
+          <span id="version-modal-tag"
+            style="display: inline-block; font-family: var(--font-mono); font-size: 0.78rem; padding: 3px 14px; border-radius: 9999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-secondary);">v1.1.0</span>
+        </div>
+      </div>
+
+      <div
+        style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px; margin-bottom: 16px;">
+        CHANGELOG
+      </div>
+
+      <div class="modal-body" id="changelog-list-container"
+        style="max-height: 400px; overflow-y: auto; padding-right: 6px;">
+        <!-- Populated dynamically -->
+      </div>
+
+      <div
+        style="text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.06);">
+        <button class="btn btn-secondary" id="btn-close-version"
+          style="min-width: 120px; padding: 9px 28px; font-weight: 600; border-radius: 8px;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule / Cron Builder Modal -->
+  <div class="modal-overlay hidden" id="modal-cron-builder">
+    <div class="modal" style="max-width: 580px; width: 92%; padding: 28px 32px;">
+      <div
+        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+        <h3 class="modal-header" style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
+          <i data-lucide="clock" style="width: 20px; height: 20px; color: var(--success);"></i> Schedule Builder
+        </h3>
+        <button type="button" class="icon-btn" id="btn-close-cron-builder" title="Close"><i
+            data-lucide="x"></i></button>
+      </div>
+
+      <div class="modal-body" style="margin-bottom: 20px;">
+        <!-- Frequency Selector -->
+        <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Run Frequency</label>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px;">
+          <button type="button" class="btn btn-sm btn-secondary cron-freq-btn active" data-freq="once">⏱️ Run
+            Once</button>
+          <button type="button" class="btn btn-sm btn-secondary cron-freq-btn" data-freq="interval">Interval
+            (Hours/Mins)</button>
+          <button type="button" class="btn btn-sm btn-secondary cron-freq-btn" data-freq="daily">Daily</button>
+          <button type="button" class="btn btn-sm btn-secondary cron-freq-btn" data-freq="weekly">Weekly (Days)</button>
+          <button type="button" class="btn btn-sm btn-secondary cron-freq-btn" data-freq="monthly">Monthly</button>
+          <button type="button" class="btn btn-sm btn-secondary cron-freq-btn" data-freq="raw">Raw Expression</button>
+        </div>
+
+        <!-- Panel 0: Run Once (One-Time Execution) -->
+        <div id="cron-panel-once" class="cron-panel">
+          <label style="display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 8px;">Quick Offset</label>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+            <button type="button" class="btn btn-sm btn-secondary cron-once-preset" data-offset="5">In 5
+              Minutes</button>
+            <button type="button" class="btn btn-sm btn-secondary cron-once-preset" data-offset="15">In 15
+              Minutes</button>
+            <button type="button" class="btn btn-sm btn-secondary cron-once-preset" data-offset="30">In 30
+              Minutes</button>
+            <button type="button" class="btn btn-sm btn-secondary cron-once-preset" data-offset="60">In 1 Hour</button>
+          </div>
+          <div class="grid grid-cols-2" style="gap: 16px;">
+            <div class="form-group">
+              <label>Run On Date</label>
+              <input type="date" id="cron-once-date" class="input">
+            </div>
+            <div class="form-group">
+              <label>Exact Time (HH:MM)</label>
+              <input type="time" id="cron-once-time" class="input">
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 1: Interval -->
+        <div id="cron-panel-interval" class="cron-panel hidden">
+          <div class="grid grid-cols-2" style="gap: 16px;">
+            <div class="form-group">
+              <label>Run Every</label>
+              <select id="cron-interval-value" class="select">
+                <option value="15m">15 Minutes</option>
+                <option value="30m">30 Minutes</option>
+                <option value="1h" selected>1 Hour</option>
+                <option value="2h">2 Hours</option>
+                <option value="3h">3 Hours</option>
+                <option value="4h">4 Hours</option>
+                <option value="6h">6 Hours</option>
+                <option value="8h">8 Hours</option>
+                <option value="12h">12 Hours</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Starting At Minute</label>
+              <select id="cron-interval-minute" class="select">
+                <option value="0">:00 (top of the hour)</option>
+                <option value="15">:15</option>
+                <option value="30">:30</option>
+                <option value="45">:45</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 2: Daily -->
+        <div id="cron-panel-daily" class="cron-panel hidden">
+          <div class="form-group">
+            <label>Run Every Day At</label>
+            <input type="time" id="cron-daily-time" class="input" value="09:00">
+          </div>
+        </div>
+
+        <!-- Panel 3: Weekly -->
+        <div id="cron-panel-weekly" class="cron-panel hidden">
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label>Run At Time</label>
+            <input type="time" id="cron-weekly-time" class="input" value="09:00">
+          </div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 8px;">On These Days</label>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <label class="btn btn-sm btn-secondary cron-day-label active"><input type="checkbox" class="cron-day-chk"
+                value="1" checked style="display:none"> Mon</label>
+            <label class="btn btn-sm btn-secondary cron-day-label"><input type="checkbox" class="cron-day-chk" value="2"
+                style="display:none"> Tue</label>
+            <label class="btn btn-sm btn-secondary cron-day-label"><input type="checkbox" class="cron-day-chk" value="3"
+                style="display:none"> Wed</label>
+            <label class="btn btn-sm btn-secondary cron-day-label"><input type="checkbox" class="cron-day-chk" value="4"
+                style="display:none"> Thu</label>
+            <label class="btn btn-sm btn-secondary cron-day-label"><input type="checkbox" class="cron-day-chk" value="5"
+                style="display:none"> Fri</label>
+            <label class="btn btn-sm btn-secondary cron-day-label"><input type="checkbox" class="cron-day-chk" value="6"
+                style="display:none"> Sat</label>
+            <label class="btn btn-sm btn-secondary cron-day-label"><input type="checkbox" class="cron-day-chk" value="0"
+                style="display:none"> Sun</label>
+          </div>
+        </div>
+
+        <!-- Panel 4: Monthly -->
+        <div id="cron-panel-monthly" class="cron-panel hidden">
+          <div class="grid grid-cols-2" style="gap: 16px;">
+            <div class="form-group">
+              <label>Day of Month</label>
+              <select id="cron-monthly-day" class="select">
+                <option value="1">1st day of month</option>
+                <option value="15">15th day of month</option>
+                <option value="28">28th day of month</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Time</label>
+              <input type="time" id="cron-monthly-time" class="input" value="09:00">
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 5: Raw -->
+        <div id="cron-panel-raw" class="cron-panel hidden">
+          <div class="form-group">
+            <label>Cron Expression (min hour day month dow)</label>
+            <input type="text" id="cron-raw-input" class="input" value="0 9 * * *" placeholder="0 9 * * *">
+          </div>
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+            Format: <code>* (min 0-59) * (hour 0-23) * (day 1-31) * (month 1-12) * (day of week 0-6)</code>
+          </p>
+        </div>
+
+        <!-- Live Preview Box -->
+        <div
+          style="margin-top: 20px; padding: 14px 18px; border-radius: 8px; background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.2);">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+            <span
+              style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; color: var(--success); text-transform: uppercase;">Resulting
+              Schedule</span>
+            <code id="cron-preview-code"
+              style="font-family: var(--font-mono); font-size: 0.95rem; font-weight: 600; color: var(--success);">0 * * * *</code>
+          </div>
+          <div id="cron-preview-human" style="font-size: 0.875rem; color: var(--text-primary);">
+            Runs every hour at :00 minutes
+          </div>
+        </div>
+      </div>
+
+      <div
+        style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px;">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-cron-builder">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-apply-cron-builder">Apply Schedule</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast-container"></div>
 
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=26"></script>
+  <script>lucide.createIcons();</script>
 </body>
+
 </html>

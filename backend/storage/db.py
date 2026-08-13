@@ -13,8 +13,9 @@ DB_PATH = PROJECT_ROOT / 'data' / 'lmscraper.db'
 async def get_db():
     """Async context manager for SQLite database connection."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = await aiosqlite.connect(str(DB_PATH))
+    conn = await aiosqlite.connect(str(DB_PATH), timeout=30.0)
     conn.row_factory = aiosqlite.Row
+    await conn.execute("PRAGMA busy_timeout = 10000;")
     try:
         yield conn
     finally:
@@ -23,6 +24,8 @@ async def get_db():
 async def init_db() -> None:
     """Initialize the database schema."""
     async with get_db() as db:
+        await db.execute("PRAGMA journal_mode=WAL;")
+        await db.execute("PRAGMA synchronous=NORMAL;")
         await db.execute('''
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +55,9 @@ async def init_db() -> None:
                 organizer_website TEXT,
                 contact_hidden INTEGER DEFAULT 0,
                 source_domain TEXT,
-                html_cache_path TEXT
+                html_cache_path TEXT,
+                dance_style TEXT,
+                platform TEXT DEFAULT 'goandance'
             )
         ''')
         await db.execute('''
@@ -69,7 +74,9 @@ async def init_db() -> None:
                 events_new INTEGER DEFAULT 0,
                 error_message TEXT,
                 resume_cursor TEXT,
-                schedule_id TEXT
+                schedule_id TEXT,
+                dance_style TEXT,
+                platform TEXT DEFAULT 'goandance'
             )
         ''')
         await db.execute('''
@@ -82,7 +89,8 @@ async def init_db() -> None:
                 last_run_at TEXT,
                 active INTEGER DEFAULT 1,
                 created_at TEXT NOT NULL,
-                label TEXT
+                label TEXT,
+                platform TEXT DEFAULT 'goandance'
             )
         ''')
         await db.execute('''
@@ -95,6 +103,37 @@ async def init_db() -> None:
             )
         ''')
         await db.commit()
+        
+        # Migrations
+        try:
+            await db.execute("ALTER TABLE events ADD COLUMN dance_style TEXT")
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+            
+        try:
+            await db.execute('ALTER TABLE jobs ADD COLUMN dance_style TEXT')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
+        try:
+            await db.execute('ALTER TABLE jobs ADD COLUMN platform TEXT DEFAULT "goandance"')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
+        try:
+            await db.execute('ALTER TABLE schedules ADD COLUMN platform TEXT DEFAULT "goandance"')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
+        try:
+            await db.execute('ALTER TABLE events ADD COLUMN platform TEXT DEFAULT "goandance"')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
 
 async def insert_event(event_dict: dict) -> int | None:
     """Insert a new event. Returns the inserted ID or None if duplicate hash."""
@@ -150,8 +189,19 @@ async def query_events(filters: dict, page: int, per_page: int) -> tuple[list[di
         
     where_clause = " AND ".join(conditions) if conditions else "1=1"
     
+    # Safe sorting
+    sort_by = filters.get('sort_by')
+    sort_dir = (filters.get('sort_dir') or 'desc').upper()
+    if sort_dir not in ('ASC', 'DESC'):
+        sort_dir = 'DESC'
+        
+    allowed_sort_cols = {
+        'title', 'date_start', 'city', 'price', 'category', 'organizer_name', 'scraped_at', 'platform', 'dance_style'
+    }
+    order_col = sort_by if sort_by in allowed_sort_cols else 'scraped_at'
+    
     count_query = f"SELECT COUNT(*) FROM events WHERE {where_clause}"
-    query = f"SELECT * FROM events WHERE {where_clause} ORDER BY scraped_at DESC LIMIT ? OFFSET ?"
+    query = f"SELECT * FROM events WHERE {where_clause} ORDER BY {order_col} {sort_dir} LIMIT ? OFFSET ?"
     
     pagination_params = params + [per_page, (page - 1) * per_page]
     
@@ -240,8 +290,14 @@ async def update_job(job_id: str, updates: dict) -> None:
 
 async def get_job(job_id: str) -> dict | None:
     """Get a job by ID."""
+    query = """
+        SELECT j.*, s.label as schedule_label, s.cron_expression as schedule_cron
+        FROM jobs j
+        LEFT JOIN schedules s ON j.schedule_id = s.id
+        WHERE j.id = ?
+    """
     async with get_db() as db:
-        async with db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)) as cursor:
+        async with db.execute(query, (job_id,)) as cursor:
             row = await cursor.fetchone()
             if row:
                 d = dict(row)
@@ -256,7 +312,12 @@ async def get_job(job_id: str) -> dict | None:
 async def list_jobs(page: int, per_page: int) -> tuple[list[dict], int]:
     """List jobs with pagination."""
     count_query = "SELECT COUNT(*) FROM jobs"
-    query = "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    query = """
+        SELECT j.*, s.label as schedule_label, s.cron_expression as schedule_cron
+        FROM jobs j
+        LEFT JOIN schedules s ON j.schedule_id = s.id
+        ORDER BY j.created_at DESC LIMIT ? OFFSET ?
+    """
     
     async with get_db() as db:
         async with db.execute(count_query) as cursor:

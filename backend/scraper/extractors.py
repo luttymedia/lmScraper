@@ -70,6 +70,14 @@ def content_hash(title: str, date: str, url: str) -> str:
 
 def extract_event_fields(soup: BeautifulSoup, url: str, source_domain: str) -> dict:
     """Extract all event fields from a detail page."""
+    
+    # Remove footer and header from soup to avoid generic social links and text
+    for tag in soup.find_all(['footer', 'header', 'nav']):
+        tag.decompose()
+        
+    for tag in soup.find_all('div', class_=re.compile(r'footer', re.I)):
+        tag.decompose()
+        
     fields = {
         'title': '', 'description': '', 'image_url': '',
         'date_start': '', 'date_end': '', 'price': '',
@@ -85,6 +93,9 @@ def extract_event_fields(soup: BeautifulSoup, url: str, source_domain: str) -> d
         fields['title'] = soup.h1.get_text(strip=True)
     elif soup.title:
         fields['title'] = soup.title.get_text(strip=True)
+        
+    if fields['title'].endswith('| go&dance'):
+        fields['title'] = fields['title'].replace('| go&dance', '').strip()
         
     # Description
     og_desc = soup.find('meta', property='og:description')
@@ -105,10 +116,19 @@ def extract_event_fields(soup: BeautifulSoup, url: str, source_domain: str) -> d
         if img and img.get('src'):
             fields['image_url'] = urljoin(url, img['src'])
             
-    # Date (basic heuristic)
+    # Date (basic heuristic & GoAndDance specific)
     time_tag = soup.find('time')
     if time_tag and time_tag.get('datetime'):
         fields['date_start'] = time_tag['datetime']
+    else:
+        # GoAndDance date format
+        cal_icon = soup.find('img', alt='icon calendar')
+        if cal_icon and cal_icon.parent:
+            cal_item = cal_icon.find_parent('div', class_='profile-details-properties-item')
+            if cal_item:
+                heading = cal_item.find(class_='heading')
+                if heading:
+                    fields['date_start'] = heading.get_text(strip=True)
         
     # Price
     text = soup.get_text().lower()
@@ -125,9 +145,22 @@ def extract_event_fields(soup: BeautifulSoup, url: str, source_domain: str) -> d
         fields['category'] = meta_kw.get('content', '')
         
     # Venue / Location
-    venue_elem = soup.find(class_=re.compile(r'venue|location', re.I))
-    if venue_elem:
-        fields['venue'] = venue_elem.get_text(strip=True)
+    loc_icon = soup.find('img', alt='icon location')
+    if loc_icon and loc_icon.parent:
+        loc_item = loc_icon.find_parent('div', class_='profile-details-properties-item')
+        if loc_item:
+            heading = loc_item.find(class_='heading')
+            if heading:
+                loc_parts = heading.get_text(strip=True).split(',')
+                fields['city'] = loc_parts[0].strip() if len(loc_parts) > 0 else ''
+                fields['country'] = loc_parts[1].strip() if len(loc_parts) > 1 else ''
+            p = loc_item.find('p')
+            if p:
+                fields['venue'] = p.get_text(strip=True)
+    else:
+        venue_elem = soup.find(class_=re.compile(r'venue|location', re.I))
+        if venue_elem:
+            fields['venue'] = venue_elem.get_text(strip=True)
         
     return fields
 
@@ -139,10 +172,18 @@ def extract_organizer(soup: BeautifulSoup) -> dict:
         'organizer_phone': '',
     }
     
-    # Try finding name
-    name_elem = soup.find(class_=re.compile(r'organizer|promotor|organiser', re.I))
-    if name_elem:
-        org['organizer_name'] = name_elem.get_text(strip=True)
+    # Try finding name (GoAndDance specific first)
+    card_org = soup.find(class_='card-organizer')
+    if card_org:
+        h3 = card_org.find('h3')
+        if h3:
+            org['organizer_name'] = h3.get_text(strip=True)
+            
+    # Fallback name search
+    if not org['organizer_name']:
+        name_elem = soup.find(class_=re.compile(r'organizer|promotor|organiser', re.I))
+        if name_elem:
+            org['organizer_name'] = name_elem.get_text(strip=True)
         
     text = soup.get_text()
     
@@ -167,7 +208,7 @@ def find_organizer_profile_url(soup: BeautifulSoup, base_url: str) -> str | None
     """Find a link to the organizer's profile page."""
     for a in soup.find_all('a', href=True):
         href = a['href']
-        if re.search(r'/(organizer|promotor|user|profile|artist)/', href, re.I):
+        if re.search(r'/(organizer|promotor|user|profile|artist|organizador)/', href, re.I):
             return urljoin(base_url, href)
     return None
 
@@ -178,6 +219,10 @@ def find_event_detail_urls(soup: BeautifulSoup, base_url: str) -> list[str]:
     
     for a in soup.find_all('a', href=True):
         href = a['href']
+        
+        if 'goandance.com' in domain and '/evento/' not in href:
+            continue
+            
         # Skip obvious non-event links
         if re.search(r'/(login|signup|cart|checkout|about|contact|terms|privacy)', href, re.I):
             continue

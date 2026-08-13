@@ -1,4 +1,9 @@
 """FastAPI main application entry point."""
+import asyncio
+import sys
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
@@ -6,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio, uuid, json
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote as urlquote
+import urllib.request as urllib_request
 
 from backend.storage.db import (
     init_db, list_jobs, get_job, delete_job, insert_job,
@@ -22,13 +28,16 @@ from backend.storage.monitor import (
 )
 from backend.jobs.manager import (
     start_job, pause_job, resume_job_control, cancel_job,
-    subscribe, unsubscribe, resume_from_db, get_active_job_ids
+    subscribe, unsubscribe, resume_from_db, get_active_job_ids,
+    is_schedule_running
 )
 from backend.jobs.scheduler import (
     start_scheduler, shutdown_scheduler, create_schedule,
-    pause_schedule_job, resume_schedule_job, delete_schedule_job
+    pause_schedule_job, resume_schedule_job, delete_schedule_job,
+    update_schedule_job
 )
 from backend.scraper.engine import ScraperConfig
+from backend.version import VERSION, RELEASE_DATE, CHANGELOG
 
 PROJECT_ROOT = Path(__file__).parent.parent
 FRONTEND_DIR = PROJECT_ROOT / 'frontend'
@@ -71,7 +80,9 @@ async def create_job_route(body: dict = Body(...)):
     job_dict = {
         'url': url,
         'filters': filters,
-        'concurrency': concurrency
+        'concurrency': concurrency,
+        'dance_style': body.get('dance_style'),
+        'platform': body.get('platform', 'goandance')
     }
     job_id = await insert_job(job_dict)
     
@@ -83,7 +94,9 @@ async def create_job_route(body: dict = Body(...)):
         min_delay=body.get('min_delay', 1.5),
         max_delay=body.get('max_delay', 4.0),
         proxy=body.get('proxy'),
-        session_cookies=session_cookies
+        session_cookies=session_cookies,
+        dance_style=body.get('dance_style'),
+        platform=body.get('platform', 'goandance')
     )
     
     await start_job(job_id, config)
@@ -142,12 +155,15 @@ def parse_event_filters(
     keyword: str | None = None,
     contact_hidden: bool | None = None,
     has_email: bool | None = None,
-    has_phone: bool | None = None
+    has_phone: bool | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None
 ) -> dict:
     return {
         "job_id": job_id, "date_from": date_from, "date_to": date_to,
         "city": city, "keyword": keyword, "contact_hidden": contact_hidden,
-        "has_email": has_email, "has_phone": has_phone
+        "has_email": has_email, "has_phone": has_phone,
+        "sort_by": sort_by, "sort_dir": sort_dir
     }
 
 @app.get("/api/events")
@@ -156,9 +172,10 @@ async def get_events_route(
     job_id: str | None = None, date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
-    has_email: bool | None = None, has_phone: bool | None = None
+    has_email: bool | None = None, has_phone: bool | None = None,
+    sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone)
+    filters = parse_event_filters(job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
     events, total = await query_events(filters, page, per_page)
     return {"events": events, "total": total, "page": page, "per_page": per_page}
 
@@ -172,9 +189,10 @@ async def export_csv_route(
     job_id: str | None = None, date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
-    has_email: bool | None = None, has_phone: bool | None = None
+    has_email: bool | None = None, has_phone: bool | None = None,
+    sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone)
+    filters = parse_event_filters(job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
     return await export_to_csv(filters)
 
 @app.get("/api/events/export/xlsx")
@@ -182,21 +200,58 @@ async def export_xlsx_route(
     job_id: str | None = None, date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
-    has_email: bool | None = None, has_phone: bool | None = None
+    has_email: bool | None = None, has_phone: bool | None = None,
+    sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone)
+    filters = parse_event_filters(job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
     return await export_to_xlsx(filters)
 
 # API Routes - Schedules
 @app.post("/api/schedule")
 async def create_schedule_route(body: dict = Body(...)):
-    sched_id = await create_schedule(body)
+    sched_dict = {
+        **body,
+        'platform': body.get('platform', 'goandance')
+    }
+    sched_id = await create_schedule(sched_dict)
     return await get_schedule(sched_id)
 
 @app.get("/api/schedule")
 async def list_schedules_route():
     schedules = await list_schedules()
-    return {"schedules": schedules}
+    enriched = []
+    for s in schedules:
+        is_running = is_schedule_running(s['id'])
+        is_active = bool(s.get('active'))
+        is_completed = (not is_active and bool(s.get('last_run_at')) and not bool(s.get('next_run_at')))
+        
+        if is_running:
+            status = 'running'
+        elif is_active:
+            status = 'active'
+        elif is_completed:
+            status = 'completed'
+        else:
+            status = 'disabled'
+            
+        enriched.append({
+            **s,
+            'is_running': is_running,
+            'computed_status': status
+        })
+    return {"schedules": enriched}
+
+@app.get("/api/schedule/{id}")
+async def get_schedule_route(id: str):
+    sched = await get_schedule(id)
+    if not sched:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return sched
+
+@app.put("/api/schedule/{id}")
+async def update_schedule_route(id: str, body: dict = Body(...)):
+    await update_schedule_job(id, body)
+    return await get_schedule(id)
 
 @app.post("/api/schedule/{id}/pause")
 async def pause_schedule_route(id: str):
@@ -216,8 +271,7 @@ async def delete_schedule_route(id: str):
 # API Routes - Sessions
 @app.get("/api/sessions")
 async def list_sessions_route():
-    sessions = await list_sessions()
-    return {"sessions": sessions}
+    return await list_sessions()
 
 @app.post("/api/sessions")
 async def create_session_route(body: dict = Body(...)):
@@ -250,6 +304,13 @@ async def cleanup_events_older_route(body: dict = Body(...)):
 async def compress_caches_route():
     return await compress_html_caches()
 
+@app.post("/api/monitor/cleanup/purge-all")
+async def purge_all_route():
+    from backend.storage.monitor import purge_all
+    res = await purge_all()
+    mb = res["freed_bytes"] / (1024*1024)
+    return {"message": f"Purged {res['deleted_events']} events and {res['deleted_jobs']} jobs. Freed {mb:.2f} MB of cache."}
+
 @app.get("/api/monitor/backup")
 async def backup_route():
     path = await export_full_backup()
@@ -258,6 +319,61 @@ async def backup_route():
 @app.delete("/api/monitor/cleanup/job/{job_id}")
 async def delete_job_cache_route(job_id: str):
     return await delete_job_cache(job_id)
+
+# API Routes - Version & Changelog
+@app.get("/api/version")
+async def get_version_route():
+    return {
+        "version": VERSION,
+        "release_date": RELEASE_DATE,
+        "changelog": CHANGELOG
+    }
+
+# API Routes - Location Autocomplete
+@app.get("/api/location-suggest")
+async def location_suggest_route(q: str = ""):
+    """Proxy Nominatim (OpenStreetMap) to provide location autocomplete suggestions."""
+    if not q or len(q.strip()) < 2:
+        return []
+    def _fetch():
+        url = f"https://nominatim.openstreetmap.org/search?q={urlquote(q)}&format=json&limit=7&addressdetails=1&accept-language=es"
+        req = urllib_request.Request(url, headers={
+            "User-Agent": "LMScraper/1.0 (contact: lmscraper@localhost)",
+            "Accept": "application/json"
+        })
+        data = json.loads(urllib_request.urlopen(req, timeout=6).read())
+        results = []
+        seen = set()
+        for item in data:
+            addr = item.get("address", {})
+            country_code = addr.get("country_code", "").upper()
+            country_name = addr.get("country", "")
+            place_type = item.get("type", "")
+            display = item.get("display_name", "")
+            # Build a short human-readable label
+            parts = [p.strip() for p in display.split(",")]
+            short_label = ", ".join(parts[:3]) if len(parts) >= 3 else display
+            # Derive the primary name (city, town, county, or country)
+            primary = (
+                addr.get("city") or addr.get("town") or addr.get("village") or
+                addr.get("municipality") or addr.get("county") or
+                addr.get("state") or addr.get("country") or parts[0]
+            )
+            key = (primary, country_code)
+            if key not in seen:
+                seen.add(key)
+                results.append({
+                    "label": short_label,
+                    "primary": primary,
+                    "country": country_name,
+                    "country_code": country_code,
+                    "type": place_type,
+                })
+        return results
+    try:
+        return await asyncio.to_thread(_fetch)
+    except Exception:
+        return []
 
 # WebSockets
 @app.websocket("/ws/jobs/{job_id}")
@@ -271,7 +387,14 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
         
     queue = await subscribe(job_id)
     if not queue:
-        # Job not running, close cleanly
+        # Job not running, close cleanly, but send final state if possible
+        if job and job['status'] == 'failed':
+            await websocket.send_json({"type": "error", "message": job.get('error_message', 'Job failed immediately')})
+        elif job and job['status'] == 'done':
+            await websocket.send_json({"type": "done", "events_found": job.get('events_found'), "events_new": job.get('events_new')})
+        elif job and job['status'] == 'cancelled':
+            await websocket.send_json({"type": "cancelled"})
+            
         await websocket.close()
         return
         

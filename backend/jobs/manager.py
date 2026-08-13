@@ -61,6 +61,7 @@ async def start_job(job_id: str, config: ScraperConfig) -> None:
     
     active_jobs[job_id] = {
         'task': task,
+        'schedule_id': getattr(config, 'schedule_id', None),
         'pause_event': pause_event,
         'cancel_event': cancel_event,
         'progress_queue': progress_queue,
@@ -98,11 +99,11 @@ async def cancel_job(job_id: str) -> bool:
 
 async def subscribe(job_id: str) -> asyncio.Queue | None:
     """Subscribe to job progress."""
-    if job_id in active_jobs:
-        q = asyncio.Queue()
-        active_jobs[job_id]['subscribers'].add(q)
-        return q
-    return None
+    if job_id not in active_jobs:
+        return None
+    q = asyncio.Queue()
+    active_jobs[job_id]['subscribers'].add(q)
+    return q
 
 async def unsubscribe(job_id: str, queue: asyncio.Queue) -> None:
     """Unsubscribe from job progress."""
@@ -127,3 +128,9 @@ async def resume_from_db(job_id: str) -> None:
 def get_active_job_ids() -> list[str]:
     """Get list of active job IDs."""
     return list(active_jobs.keys())
+
+def is_schedule_running(schedule_id: str) -> bool:
+    """Check if any active scraping job belongs to this schedule."""
+    if not schedule_id:
+        return False
+    return any(job.get('schedule_id') == schedule_id for job in active_jobs.values())

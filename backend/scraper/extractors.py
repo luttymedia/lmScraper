@@ -220,7 +220,7 @@ def find_event_detail_urls(soup: BeautifulSoup, base_url: str) -> list[str]:
     for a in soup.find_all('a', href=True):
         href = a['href']
         
-        if 'goandance.com' in domain and '/evento/' not in href:
+        if 'goandance.com' in domain and not re.search(r'/(evento|event)/', href):
             continue
             
         # Skip obvious non-event links

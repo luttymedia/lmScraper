@@ -195,19 +195,78 @@ UI.concurrencySlider.addEventListener('input', (e) => {
 
 // ── Form & URL Live Syncing ───────────────────────────────────────────────────
 
-const urlInput = document.getElementById('job-url');
-const styleInput = document.getElementById('job-dance-style');
-const dateFromInput = document.getElementById('job-date-from');
-const dateToInput = document.getElementById('job-date-to');
-const locationInput = document.getElementById('job-location');
-const locationSuggestions = document.getElementById('job-location-suggestions');
+const GAD_BASE_ES = 'https://www.goandance.com/es/eventos';
+const GAD_BASE_EN = 'https://www.goandance.com/en/events';
 
-function setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, locationInput, locationSuggestions) {
+function getGadBaseUrl(lang) {
+  return lang === 'en' ? GAD_BASE_EN : GAD_BASE_ES;
+}
+
+function updateUrlLanguage(urlInput, newLang) {
   if (!urlInput) return;
-  // Sync URL -> Form Inputs
+  const targetBase = getGadBaseUrl(newLang);
+  const currentVal = urlInput.value.trim();
+  if (!currentVal) {
+    urlInput.value = targetBase;
+    urlInput.placeholder = targetBase;
+    return;
+  }
+  try {
+    const urlObj = new URL(currentVal);
+    if (urlObj.hostname.includes('goandance.com')) {
+      const targetObj = new URL(targetBase);
+      urlObj.pathname = targetObj.pathname;
+      urlInput.value = urlObj.toString();
+    } else {
+      urlInput.value = targetBase;
+    }
+  } catch (e) {
+    urlInput.value = targetBase;
+  }
+  urlInput.placeholder = targetBase;
+}
+
+function syncUrlToGadLanguage(url, langRadiosName) {
+  if (!url) return;
+  try {
+    const urlObj = new URL(url);
+    if (urlObj.hostname.includes('goandance.com')) {
+      let detectedLang = null;
+      if (urlObj.pathname.startsWith('/en/') || urlObj.pathname === '/en' || urlObj.pathname === '/en/events') {
+        detectedLang = 'en';
+      } else if (urlObj.pathname.startsWith('/es/') || urlObj.pathname === '/es' || urlObj.pathname === '/es/eventos') {
+        detectedLang = 'es';
+      }
+      if (detectedLang) {
+        const radio = document.querySelector(`input[name="${langRadiosName}"][value="${detectedLang}"]`);
+        if (radio && !radio.checked) {
+          radio.checked = true;
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+function setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, locationInput, locationSuggestions, langRadiosName, copyBtn, clearBtn) {
+  if (!urlInput) return;
+
+  function getActiveBaseUrl() {
+    const current = urlInput.value.trim();
+    if (current) {
+      try {
+        return new URL(current);
+      } catch (e) {}
+    }
+    const langRadio = document.querySelector(`input[name="${langRadiosName}"]:checked`);
+    const lang = langRadio ? langRadio.value : 'es';
+    return new URL(getGadBaseUrl(lang));
+  }
+
+  // Sync URL -> Form Inputs & Language Radio
   urlInput.addEventListener('input', () => {
     const url = urlInput.value;
     if (!url) return;
+    syncUrlToGadLanguage(url, langRadiosName);
     try {
       const urlObj = new URL(url);
       const params = new URLSearchParams(urlObj.search);
@@ -234,43 +293,48 @@ function setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, location
     } catch (e) {}
   });
 
-// Copy & Clear URL buttons
-const btnCopyUrl = document.getElementById('btn-copy-url');
-const btnClearUrl = document.getElementById('btn-clear-url');
+  // Language Radio Change -> URL Update
+  document.querySelectorAll(`input[name="${langRadiosName}"]`).forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        updateUrlLanguage(urlInput, e.target.value);
+      }
+    });
+  });
 
-btnCopyUrl?.addEventListener('click', async () => {
-  const val = urlInput.value.trim();
-  if (!val) {
-    showToast('Target URL is empty', 'warning');
-    return;
-  }
-  try {
-    await navigator.clipboard.writeText(val);
-    showToast('URL copied to clipboard', 'success');
-  } catch (e) {
-    const ta = document.createElement('textarea');
-    ta.value = val;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    showToast('URL copied to clipboard', 'success');
-  }
-});
+  // Copy & Clear URL buttons
+  copyBtn?.addEventListener('click', async () => {
+    const val = urlInput.value.trim();
+    if (!val) {
+      showToast('Target URL is empty', 'warning');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(val);
+      showToast('URL copied to clipboard', 'success');
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = val;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('URL copied to clipboard', 'success');
+    }
+  });
 
-btnClearUrl?.addEventListener('click', () => {
-  urlInput.value = '';
-  urlInput.dispatchEvent(new Event('input'));
-  urlInput.focus();
-  showToast('Target URL cleared', 'info');
-});
+  clearBtn?.addEventListener('click', () => {
+    urlInput.value = '';
+    urlInput.dispatchEvent(new Event('input'));
+    urlInput.focus();
+    showToast('Target URL cleared', 'info');
+  });
 
   // Sync Style -> URL
   styleInput?.addEventListener('input', () => {
     const val = styleInput.value.trim();
-    let base = urlInput.value.trim() || 'https://www.goandance.com/es/eventos';
     try {
-      const urlObj = new URL(base);
+      const urlObj = getActiveBaseUrl();
       const params = new URLSearchParams(urlObj.search);
       if (val) {
         const formattedStyle = val.toLowerCase().replace(/\s+/g, '-');
@@ -289,9 +353,8 @@ btnClearUrl?.addEventListener('click', () => {
   function syncDatesToUrl() {
     const fromVal = dateFromInput ? dateFromInput.value : '';
     const toVal = dateToInput ? dateToInput.value : '';
-    let base = urlInput.value.trim() || 'https://www.goandance.com/es/eventos';
     try {
-      const urlObj = new URL(base);
+      const urlObj = getActiveBaseUrl();
       const params = new URLSearchParams(urlObj.search);
       if (fromVal || toVal) {
         params.set('period', 'custom');
@@ -322,9 +385,8 @@ btnClearUrl?.addEventListener('click', () => {
   `;
 
   function setLocationSuggestionUrl(primary, countryCode, country) {
-    let base = urlInput.value.trim() || 'https://www.goandance.com/es/eventos';
     try {
-      const urlObj = new URL(base);
+      const urlObj = getActiveBaseUrl();
       const params = new URLSearchParams(urlObj.search);
       params.set('address', primary);
       if (countryCode) params.set('country', countryCode);
@@ -393,7 +455,16 @@ btnClearUrl?.addEventListener('click', () => {
 }
 
 // Bind for New Job
-setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, locationInput, locationSuggestions);
+const urlInput = document.getElementById('job-url');
+const styleInput = document.getElementById('job-dance-style');
+const dateFromInput = document.getElementById('job-date-from');
+const dateToInput = document.getElementById('job-date-to');
+const locationInput = document.getElementById('job-location');
+const locationSuggestions = document.getElementById('job-location-suggestions');
+const btnCopyUrl = document.getElementById('btn-copy-url');
+const btnClearUrl = document.getElementById('btn-clear-url');
+
+setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, locationInput, locationSuggestions, 'job_gad_lang', btnCopyUrl, btnClearUrl);
 
 // Bind for Scheduler
 const schedUrlInput = document.getElementById('sched-url');
@@ -402,40 +473,10 @@ const schedDateFromInput = document.getElementById('sched-date-from');
 const schedDateToInput = document.getElementById('sched-date-to');
 const schedLocationInput = document.getElementById('sched-city');
 const schedLocationSuggestions = document.getElementById('sched-city-suggestions');
-
-setupUrlSync(schedUrlInput, schedStyleInput, schedDateFromInput, schedDateToInput, schedLocationInput, schedLocationSuggestions);
-
-// Copy & Clear URL buttons for Scheduler
 const btnCopySchedUrl = document.getElementById('btn-copy-sched-url');
 const btnClearSchedUrl = document.getElementById('btn-clear-sched-url');
 
-btnCopySchedUrl?.addEventListener('click', async () => {
-  const val = schedUrlInput?.value.trim();
-  if (!val) {
-    showToast('Target URL is empty', 'warning');
-    return;
-  }
-  try {
-    await navigator.clipboard.writeText(val);
-    showToast('URL copied to clipboard', 'success');
-  } catch (e) {
-    const ta = document.createElement('textarea');
-    ta.value = val;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    showToast('URL copied to clipboard', 'success');
-  }
-});
-
-btnClearSchedUrl?.addEventListener('click', () => {
-  if (!schedUrlInput) return;
-  schedUrlInput.value = '';
-  schedUrlInput.dispatchEvent(new Event('input'));
-  schedUrlInput.focus();
-  showToast('Target URL cleared', 'info');
-});
+setupUrlSync(schedUrlInput, schedStyleInput, schedDateFromInput, schedDateToInput, schedLocationInput, schedLocationSuggestions, 'sched_gad_lang', btnCopySchedUrl, btnClearSchedUrl);
 
 UI.btnStart.addEventListener('click', async () => {
   const url = document.getElementById('job-url').value;
@@ -950,7 +991,10 @@ window.rerunJob = async (jobId) => {
 
     // Populate URL
     const urlInput = document.getElementById('job-url');
-    if (urlInput) urlInput.value = job.url || 'https://www.goandance.com/es/';
+    if (urlInput) {
+      urlInput.value = job.url || GAD_BASE_ES;
+      syncUrlToGadLanguage(job.url || GAD_BASE_ES, 'job_gad_lang');
+    }
 
     // Populate Platform radio
     const platform = job.platform || 'goandance';
@@ -1264,7 +1308,16 @@ let currentEditingScheduleId = null;
 function resetScheduleForm() {
   currentEditingScheduleId = null;
   document.getElementById('sched-label').value = '';
-  document.getElementById('sched-url').value = 'https://www.goandance.com/es/eventos';
+  
+  const defaultLang = document.querySelector('input[name="sched_gad_lang"][value="es"]');
+  if (defaultLang) defaultLang.checked = true;
+
+  const schedUrl = document.getElementById('sched-url');
+  if (schedUrl) {
+    schedUrl.value = GAD_BASE_ES;
+    schedUrl.placeholder = GAD_BASE_ES;
+  }
+
   document.getElementById('sched-date-from').value = '';
   document.getElementById('sched-date-to').value = '';
   document.getElementById('sched-city').value = '';
@@ -1297,7 +1350,11 @@ window.editSchedule = async (id) => {
     currentEditingScheduleId = id;
     
     document.getElementById('sched-label').value = sched.label || '';
-    document.getElementById('sched-url').value = sched.url || '';
+    const schedUrl = document.getElementById('sched-url');
+    if (schedUrl) {
+      schedUrl.value = sched.url || '';
+      syncUrlToGadLanguage(sched.url, 'sched_gad_lang');
+    }
     
     const platform = sched.platform || 'goandance';
     const radio = document.querySelector(`input[name="sched_platform"][value="${platform}"]`);

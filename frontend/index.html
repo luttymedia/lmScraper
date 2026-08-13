@@ -32,13 +32,15 @@
         <span style="display:inline-flex; align-items:center; gap:8px;">
           <i data-lucide="clock" class="nav-icon"></i> <span>Job History</span>
         </span>
-        <span class="nav-pulse-dot" id="job-history-pulse" style="display: none;" title="A scraping job is currently running"></span>
+        <span class="nav-pulse-dot" id="job-history-pulse" style="display: none;"
+          title="A scraping job is currently running"></span>
       </a>
       <a href="#" class="nav-item" data-target="section-scheduler">
         <span style="display:inline-flex; align-items:center; gap:8px;">
           <i data-lucide="calendar" class="nav-icon"></i> <span>Scheduler</span>
         </span>
-        <span class="nav-pulse-dot" id="scheduler-pulse" style="display: none;" title="A scheduled job is active / running"></span>
+        <span class="nav-pulse-dot" id="scheduler-pulse" style="display: none;"
+          title="A scheduled job is active / running"></span>
       </a>
       <a href="#" class="nav-item" data-target="section-sessions">
         <i data-lucide="key" class="nav-icon"></i> <span>Saved Sessions</span>
@@ -59,13 +61,26 @@
       <h2 class="section-title">Start New Scraping Job</h2>
 
       <div class="card">
-        <div class="form-group">
-          <label>Platform</label>
-          <div style="display: flex; gap: 16px; margin-top: 8px;">
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-              <input type="radio" name="job_platform" value="goandance" checked> Go&Dance
-            </label>
-            <!-- Add future platforms here -->
+        <div style="display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label>Platform</label>
+            <div style="display: flex; gap: 16px; margin-top: 8px;">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="radio" name="job_platform" value="goandance" checked> Go&Dance
+              </label>
+              <!-- Add future platforms here -->
+            </div>
+          </div>
+          <div class="form-group" id="job-gad-lang-group" style="margin-bottom: 0;">
+            <label>Search Language</label>
+            <div style="display: flex; gap: 16px; margin-top: 8px;">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="radio" name="job_gad_lang" value="es" checked> ES
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="radio" name="job_gad_lang" value="en"> EN
+              </label>
+            </div>
           </div>
         </div>
         <div class="form-group mt-4">
@@ -288,18 +303,34 @@
             <input type="text" id="sched-label" class="input" placeholder="Daily GoAndDance Scrape">
           </div>
           <div class="form-group" style="grid-column: span 2;">
-            <label>Platform</label>
-            <div style="display: flex; gap: 16px; margin-top: 8px;">
-              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                <input type="radio" name="sched_platform" value="goandance" checked> Go&Dance
-              </label>
-              <!-- Add future platforms here -->
+            <div style="display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label>Platform</label>
+                <div style="display: flex; gap: 16px; margin-top: 8px;">
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="radio" name="sched_platform" value="goandance" checked> Go&Dance
+                  </label>
+                  <!-- Add future platforms here -->
+                </div>
+              </div>
+              <div class="form-group" id="sched-gad-lang-group" style="margin-bottom: 0;">
+                <label>Search Language</label>
+                <div style="display: flex; gap: 16px; margin-top: 8px;">
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="radio" name="sched_gad_lang" value="es" checked> ES
+                  </label>
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="radio" name="sched_gad_lang" value="en"> EN
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
           <div class="form-group" style="grid-column: span 2;">
             <label>Target URL</label>
             <div style="position: relative; display: flex; align-items: center;">
-              <input type="url" id="sched-url" class="input" value="https://www.goandance.com/es/eventos" placeholder="https://www.goandance.com/es/eventos" style="padding-right: 80px; width: 100%;">
+              <input type="url" id="sched-url" class="input" value="https://www.goandance.com/es/eventos"
+                placeholder="https://www.goandance.com/es/eventos" style="padding-right: 80px; width: 100%;">
               <div style="position: absolute; right: 10px; display: flex; align-items: center; gap: 4px;">
                 <button type="button" id="btn-copy-sched-url" class="icon-btn" title="Copy Target URL">
                   <i data-lucide="copy"></i>
@@ -318,12 +349,16 @@
             <label>Location / City</label>
             <div style="position:relative;">
               <input type="text" id="sched-city" class="input" placeholder="e.g. Madrid" autocomplete="off">
-              <ul id="sched-city-suggestions" style="display:none; position:absolute; top:100%; left:0; right:0; z-index:200; background:var(--surface-elevated); border:1px solid var(--border); border-radius:8px; margin-top:4px; padding:4px 0; list-style:none; max-height:220px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,0.3);"></ul>
+              <ul id="sched-city-suggestions"
+                style="display:none; position:absolute; top:100%; left:0; right:0; z-index:200; background:var(--surface-elevated); border:1px solid var(--border); border-radius:8px; margin-top:4px; padding:4px 0; list-style:none; max-height:220px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,0.3);">
+              </ul>
             </div>
           </div>
-          <div class="form-group"><label>Keyword</label><input type="text" id="sched-keyword" class="input" placeholder="e.g. Workshops"></div>
+          <div class="form-group"><label>Keyword</label><input type="text" id="sched-keyword" class="input"
+              placeholder="e.g. Workshops"></div>
           <div class="form-group">
-            <label>Dance Style <span data-tooltip="Optional tag for all scraped events"><i data-lucide="info" class="icon-sm"></i></span></label>
+            <label>Dance Style <span data-tooltip="Optional tag for all scraped events"><i data-lucide="info"
+                  class="icon-sm"></i></span></label>
             <input type="text" id="sched-dance-style" class="input" placeholder="e.g. Bachata">
           </div>
         </div>
@@ -340,11 +375,13 @@
               <i data-lucide="clock" style="width: 14px; height: 14px; color: var(--success);"></i> Schedule Builder
             </button>
             <span id="sched-cron-summary"
-              style="font-size: 0.85rem; color: var(--success); font-weight: 500; white-space: nowrap;">Runs daily at 09:00</span>
+              style="font-size: 0.85rem; color: var(--success); font-weight: 500; white-space: nowrap;">Runs daily at
+              09:00</span>
           </div>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border);">
+        <div
+          style="display: flex; align-items: center; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border);">
           <button class="btn btn-primary" id="btn-create-schedule" style="min-width: 150px;">Create Schedule</button>
           <button type="button" class="btn btn-secondary hidden" id="btn-cancel-edit-schedule">Cancel Edit</button>
           <span id="sched-edit-mode-badge" class="badge badge-running hidden"

@@ -1,9 +1,17 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 RELEASE_DATE = "2026-08-14"
 
 CHANGELOG = [
+    {
+        "version": "1.4.0",
+        "date": "2026-08-14",
+        "title": "Schedule Groups & Sequential Execution",
+        "changes": [
+            "Added schedule group functionality"
+        ]
+    },
     {
         "version": "1.3.0",
         "date": "2026-08-14",

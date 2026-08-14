@@ -404,13 +404,16 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
                         continue
                         
                     stats["events_found"] += 1
-                    inserted_id = await insert_event(event)
-                    if inserted_id:
+                    inserted_id, insert_status = await insert_event(event)
+                    if insert_status == "new":
                         stats["events_new"] += 1
                         status_label = "new"
                         if prof:
                             profile_urls.add(prof)
                             await emit(progress_queue, {"type": "log", "level": "info", "message": f"   └─ Found organizer profile: {prof}"})
+                    elif insert_status == "duplicate_updated":
+                        stats["events_skipped"] += 1
+                        status_label = "duplicate, updated tags"
                     else:
                         stats["events_skipped"] += 1
                         status_label = "duplicate"

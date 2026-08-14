@@ -140,6 +140,7 @@ async def init_db() -> None:
             SELECT group_id, id, order_index 
             FROM schedules 
             WHERE group_id IS NOT NULL
+            AND group_id IN (SELECT id FROM schedule_groups)
         ''')
         await db.commit()
         try:
@@ -228,8 +229,8 @@ async def init_db() -> None:
         except Exception:
             pass
 
-async def insert_event(event_dict: dict) -> int | None:
-    """Insert a new event. Returns the inserted ID or None if duplicate hash."""
+async def insert_event(event_dict: dict) -> tuple[int | None, str]:
+    """Insert a new event. Returns (inserted_id, status_string) where status is 'new', 'duplicate_updated', or 'duplicate'."""
     keys = list(event_dict.keys())
     values = tuple(event_dict[k] for k in keys)
     placeholders = ', '.join(['?'] * len(keys))
@@ -241,9 +242,28 @@ async def insert_event(event_dict: dict) -> int | None:
         try:
             cursor = await db.execute(query, values)
             await db.commit()
-            return cursor.lastrowid
+            return cursor.lastrowid, "new"
         except aiosqlite.IntegrityError:
-            return None
+            if 'dance_style' in event_dict and event_dict['dance_style']:
+                new_style = event_dict['dance_style'].strip()
+                if new_style:
+                    content_hash = event_dict.get('content_hash')
+                    if content_hash:
+                        async with db.execute("SELECT dance_style FROM events WHERE content_hash = ?", (content_hash,)) as cursor:
+                            row = await cursor.fetchone()
+                            if row:
+                                existing_styles = []
+                                if row[0]:
+                                    existing_styles = [s.strip() for s in row[0].split(',') if s.strip()]
+                                
+                                existing_styles_lower = [s.lower() for s in existing_styles]
+                                if new_style.lower() not in existing_styles_lower:
+                                    existing_styles.append(new_style)
+                                    merged_styles = ', '.join(existing_styles)
+                                    await db.execute("UPDATE events SET dance_style = ? WHERE content_hash = ?", (merged_styles, content_hash))
+                                    await db.commit()
+                                    return None, "duplicate_updated"
+            return None, "duplicate"
 
 async def query_events(filters: dict, page: int, per_page: int) -> tuple[list[dict], int]:
     """Query events with pagination and filters."""

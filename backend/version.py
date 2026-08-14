@@ -1,9 +1,19 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 RELEASE_DATE = "2026-08-14"
 
 CHANGELOG = [
+    {
+        "version": "1.5.0",
+        "date": "2026-08-14",
+        "title": "Dynamic Dance Style Merging & Tagging on Deduplication",
+        "changes": [
+            "Updated event deduplication to automatically merge and update dance style tags when identical events are found across different searches",
+            "Updated live scraper logs to report 'duplicate, updated tags' when new dance styles are attached to existing events",
+            "Ensured automatic scroll-to-top on tab switching across all dashboard sections"
+        ]
+    },
     {
         "version": "1.4.0",
         "date": "2026-08-14",

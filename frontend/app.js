@@ -134,6 +134,16 @@ document.getElementById('btn-confirm-ok').addEventListener('click', () => { clos
 
 let activeSectionId = 'section-new-job';
 
+function resetTabScroll() {
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  const mainContent = document.querySelector('.main-content');
+  if (mainContent) mainContent.scrollTop = 0;
+  const activeSection = document.querySelector('.section.active');
+  if (activeSection) activeSection.scrollTop = 0;
+}
+
 function setupNavigation() {
   const navItems = document.querySelectorAll('.nav-item');
   const sections = document.querySelectorAll('.section');
@@ -151,6 +161,8 @@ function setupNavigation() {
       sections.forEach(s => s.classList.remove('active'));
       document.getElementById(targetId).classList.add('active');
       activeSectionId = targetId;
+
+      resetTabScroll();
 
       if (targetId === 'section-job-history') loadJobHistory();
       if (targetId === 'section-results') { loadJobHistory(); loadResults(); }
@@ -1319,6 +1331,8 @@ window.viewJobResults = async (jobId) => {
 
   const sidebar = document.getElementById('sidebar');
   if (window.innerWidth <= 768 && sidebar) sidebar.classList.remove('open');
+
+  resetTabScroll();
 
   // Clear all other filter inputs so we only filter by this job
   document.querySelectorAll('.filter-bar input, .filter-bar select').forEach(el => {

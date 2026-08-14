@@ -58,7 +58,8 @@ async def init_db() -> None:
                 source_domain TEXT,
                 html_cache_path TEXT,
                 dance_style TEXT,
-                platform TEXT DEFAULT 'goandance'
+                platform TEXT DEFAULT 'goandance',
+                updated_by_jobs TEXT
             )
         ''')
         await db.execute('''
@@ -73,6 +74,7 @@ async def init_db() -> None:
                 finished_at TEXT,
                 events_found INTEGER DEFAULT 0,
                 events_new INTEGER DEFAULT 0,
+                events_updated INTEGER DEFAULT 0,
                 error_message TEXT,
                 resume_cursor TEXT,
                 schedule_id TEXT,
@@ -131,6 +133,17 @@ async def init_db() -> None:
                 FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
             )
         ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS job_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                level TEXT DEFAULT 'info',
+                message TEXT NOT NULL,
+                FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+            )
+        ''')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_job_logs_job_id ON job_logs(job_id)')
         await db.commit()
         
         # Migrations
@@ -162,7 +175,19 @@ async def init_db() -> None:
             pass  # Column already exists
 
         try:
+            await db.execute('ALTER TABLE events ADD COLUMN updated_by_jobs TEXT')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
+        try:
             await db.execute('ALTER TABLE jobs ADD COLUMN nickname TEXT')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
+        try:
+            await db.execute('ALTER TABLE jobs ADD COLUMN events_updated INTEGER DEFAULT 0')
             await db.commit()
         except aiosqlite.OperationalError:
             pass  # Column already exists
@@ -249,18 +274,28 @@ async def insert_event(event_dict: dict) -> tuple[int | None, str]:
                 if new_style:
                     content_hash = event_dict.get('content_hash')
                     if content_hash:
-                        async with db.execute("SELECT dance_style FROM events WHERE content_hash = ?", (content_hash,)) as cursor:
+                        async with db.execute("SELECT dance_style, updated_by_jobs FROM events WHERE content_hash = ?", (content_hash,)) as cursor:
                             row = await cursor.fetchone()
                             if row:
                                 existing_styles = []
                                 if row[0]:
                                     existing_styles = [s.strip() for s in row[0].split(',') if s.strip()]
                                 
+                                existing_jobs = []
+                                if row[1]:
+                                    existing_jobs = [j.strip() for j in row[1].split(',') if j.strip()]
+                                
                                 existing_styles_lower = [s.lower() for s in existing_styles]
                                 if new_style.lower() not in existing_styles_lower:
                                     existing_styles.append(new_style)
                                     merged_styles = ', '.join(existing_styles)
-                                    await db.execute("UPDATE events SET dance_style = ? WHERE content_hash = ?", (merged_styles, content_hash))
+                                    
+                                    current_job_id = event_dict.get('job_id')
+                                    if current_job_id and current_job_id not in existing_jobs:
+                                        existing_jobs.append(current_job_id)
+                                    merged_jobs = ', '.join(existing_jobs) if existing_jobs else None
+                                    
+                                    await db.execute("UPDATE events SET dance_style = ?, updated_by_jobs = ? WHERE content_hash = ?", (merged_styles, merged_jobs, content_hash))
                                     await db.commit()
                                     return None, "duplicate_updated"
             return None, "duplicate"
@@ -287,6 +322,10 @@ async def query_events(filters: dict, page: int, per_page: int) -> tuple[list[di
     if filters.get('date_from'):
         conditions.append("date_start >= ?")
         params.append(filters['date_from'])
+        
+    if filters.get('updated_by_job_id'):
+        conditions.append("updated_by_jobs LIKE ?")
+        params.append(f"%{filters['updated_by_job_id']}%")
         
     if filters.get('date_to'):
         conditions.append("date_start <= ?")
@@ -472,11 +511,29 @@ async def list_jobs(page: int, per_page: int) -> tuple[list[dict], int]:
     return jobs, total
 
 async def delete_job(job_id: str) -> None:
-    """Delete a job and its associated events."""
+    """Delete a job, its associated events, and logs."""
     async with get_db() as db:
+        await db.execute("DELETE FROM job_logs WHERE job_id = ?", (job_id,))
         await db.execute("DELETE FROM events WHERE job_id = ?", (job_id,))
         await db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
         await db.commit()
+
+async def insert_job_log(job_id: str, level: str, message: str) -> None:
+    """Insert a log line for a job."""
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO job_logs (job_id, timestamp, level, message) VALUES (?, ?, ?, ?)",
+            (job_id, datetime.utcnow().isoformat(), level or 'info', message)
+        )
+        await db.commit()
+
+async def get_job_logs(job_id: str) -> list[dict]:
+    """Get all log lines for a job ordered chronologically."""
+    query = "SELECT timestamp, level, message FROM job_logs WHERE job_id = ? ORDER BY id ASC"
+    async with get_db() as db:
+        async with db.execute(query, (job_id,)) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
 
 async def insert_schedule(sched_dict: dict) -> str:
     """Insert a new schedule."""

@@ -1,9 +1,18 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 RELEASE_DATE = "2026-08-14"
 
 CHANGELOG = [
+    {
+        "version": "1.6.0",
+        "date": "2026-08-14",
+        "title": "Job Log Persistence & Updated Tags Filtering",
+        "changes": [
+            "Added 'Updated' tag count filter to Job History cards to filter results table specifically by events updated by a job",
+            "Implemented job execution log persistence and a dark console modal viewer ('Logs' button) to inspect full execution logs for any job"
+        ]
+    },
     {
         "version": "1.5.0",
         "date": "2026-08-14",

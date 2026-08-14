@@ -29,7 +29,8 @@ const ICONS = {
   list: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>`,
   plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
   refreshCw: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`,
-  layers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`
+  layers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`,
+  terminal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`
 };
 
 function escapeHtml(str) {
@@ -778,13 +779,16 @@ function setupResultsColumns() {
   });
 }
 
+let view_updated_for_job = null;
+
 function getActiveFilters() {
   const filters = {
     date_from: document.getElementById('filter-date-from')?.value || '',
     date_to: document.getElementById('filter-date-to')?.value || '',
     city: document.getElementById('filter-city')?.value || '',
     keyword: document.getElementById('filter-keyword')?.value || '',
-    job_ids: Array.from(selectedJobIds).join(','),
+    job_ids: view_updated_for_job ? '' : Array.from(selectedJobIds).join(','),
+    updated_by_job_id: view_updated_for_job || '',
     has_contact: document.getElementById('filter-contact')?.value || '',
     contact_hidden: document.getElementById('filter-hidden-contact')?.value || ''
   };
@@ -917,6 +921,7 @@ document.getElementById('btn-apply-filters').addEventListener('click', () => {
 document.getElementById('btn-reset-filters').addEventListener('click', () => {
   document.querySelectorAll('.filter-bar input, .filter-bar select').forEach(el => el.value = '');
   selectedJobIds.clear();
+  view_updated_for_job = null;
   updateJobMultiselectLabel();
   renderJobMultiselectList();
   currentPage = 1;
@@ -925,6 +930,7 @@ document.getElementById('btn-reset-filters').addEventListener('click', () => {
 
 document.querySelectorAll('.filter-bar select').forEach(select => {
   select.addEventListener('change', () => {
+    view_updated_for_job = null;
     currentPage = 1;
     loadResults();
   });
@@ -933,6 +939,7 @@ document.querySelectorAll('.filter-bar select').forEach(select => {
 document.querySelectorAll('.filter-bar input').forEach(input => {
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
+      view_updated_for_job = null;
       currentPage = 1;
       loadResults();
     }
@@ -962,6 +969,18 @@ let selectedJobIds = new Set();
 function updateJobMultiselectLabel() {
   const labelEl = document.getElementById('job-multiselect-label');
   if (!labelEl) return;
+  
+  if (view_updated_for_job) {
+    const job = allJobHistory.find(j => j.id === view_updated_for_job);
+    if (job) {
+      const name = job.nickname ? job.nickname : `${formatDate(job.created_at)} - ${truncate(job.url, 22)}`;
+      labelEl.innerHTML = `<span style="color:var(--accent)">Updates by: ${name}</span>`;
+    } else {
+      labelEl.innerHTML = `<span style="color:var(--accent)">Updates by Job</span>`;
+    }
+    return;
+  }
+
   if (selectedJobIds.size === 0) {
     labelEl.textContent = 'All Jobs';
   } else if (selectedJobIds.size === 1) {
@@ -1276,6 +1295,8 @@ function renderJobHistory() {
         <div style="color:var(--border); font-size:0.7rem;">•</div>
         <div>New: <strong style="color:var(--success)">${job.events_new || 0}</strong></div>
         <div style="color:var(--border); font-size:0.7rem;">•</div>
+        <div>Updated: ${job.events_updated > 0 ? `<a href="#" onclick="viewJobUpdates('${job.id}'); return false;" style="color:var(--accent); font-weight:bold; text-decoration:none;" title="View updated events for this job">${job.events_updated}</a>` : `<strong style="color:var(--accent)">0</strong>`}</div>
+        <div style="color:var(--border); font-size:0.7rem;">•</div>
         <div>Duration: <strong style="color:var(--text-primary)">${durationStr}</strong></div>
       </div>
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap;">
@@ -1285,6 +1306,7 @@ function renderJobHistory() {
           : `<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="rerunJob('${job.id}')">${ICONS.repeat} Rerun</button>`
         }
         <button class="btn btn-danger btn-sm" style="white-space:nowrap;" onclick="deleteJob('${job.id}')">${ICONS.trash} Delete</button>
+        <button class="btn btn-secondary btn-sm" style="white-space:nowrap; margin-left:auto;" onclick="viewJobLogs('${job.id}')">${ICONS.terminal} Logs</button>
       </div>
     `;
     container.appendChild(card);
@@ -1317,6 +1339,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.viewJobResults = async (jobId) => {
+  view_updated_for_job = null;
   // Navigate to Results section
   const navItems = document.querySelectorAll('.nav-item');
   navItems.forEach(n => n.classList.remove('active'));
@@ -1341,6 +1364,40 @@ window.viewJobResults = async (jobId) => {
 
   // Select this jobId in multiselect
   selectedJobIds = new Set([jobId]);
+  updateJobMultiselectLabel();
+  renderJobMultiselectList();
+
+  currentPage = 1;
+  await loadResults();
+};
+
+window.viewJobUpdates = async (jobId) => {
+  view_updated_for_job = jobId;
+  
+  // Navigate to Results section
+  const navItems = document.querySelectorAll('.nav-item');
+  navItems.forEach(n => n.classList.remove('active'));
+  const resultsNav = document.querySelector('.nav-item[data-target="section-results"]');
+  if (resultsNav) resultsNav.classList.add('active');
+
+  const sections = document.querySelectorAll('.section');
+  sections.forEach(s => s.classList.remove('active'));
+  const resultsSection = document.getElementById('section-results');
+  if (resultsSection) resultsSection.classList.add('active');
+  activeSectionId = 'section-results';
+
+  const sidebar = document.getElementById('sidebar');
+  if (window.innerWidth <= 768 && sidebar) sidebar.classList.remove('open');
+
+  resetTabScroll();
+
+  // Clear all other filter inputs so we only filter by this job
+  document.querySelectorAll('.filter-bar input, .filter-bar select').forEach(el => {
+    el.value = '';
+  });
+
+  // Clear standard job selection since we are using view_updated_for_job
+  selectedJobIds.clear();
   updateJobMultiselectLabel();
   renderJobMultiselectList();
 
@@ -2580,6 +2637,39 @@ if (btnCloseVersion) {
   });
 }
 
+window.viewJobLogs = async (jobId) => {
+  const body = document.getElementById('job-log-modal-body');
+  if (!body) return;
+
+  body.innerHTML = '<div style="color:var(--text-secondary); padding:10px;">Loading job logs...</div>';
+  openModal('modal-job-log');
+
+  try {
+    const res = await api(`/api/jobs/${jobId}/logs`);
+    const logs = res.logs || [];
+    if (logs.length === 0) {
+      body.innerHTML = '<div style="color:var(--text-muted); font-style:italic; padding:10px;">No execution logs found for this job.</div>';
+      return;
+    }
+
+    body.innerHTML = '';
+    logs.forEach(log => {
+      const el = document.createElement('div');
+      const level = log.level || 'info';
+      el.className = `log-${level}`;
+      const timeStr = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+      el.textContent = timeStr ? `[${timeStr}] ${log.message}` : log.message;
+      body.appendChild(el);
+    });
+    body.scrollTop = body.scrollHeight;
+  } catch (e) {
+    body.innerHTML = `<div class="log-error" style="padding:10px;">Failed to load logs: ${escapeHtml(e.message)}</div>`;
+  }
+};
+
+document.getElementById('btn-close-job-log-modal')?.addEventListener('click', () => closeModal('modal-job-log'));
+document.getElementById('btn-close-job-log-footer')?.addEventListener('click', () => closeModal('modal-job-log'));
+
 // ── Live Background Polling & Status Sync ─────────────────────────────────────
 
 let prevRunningJobIds = new Set();
@@ -2645,7 +2735,7 @@ async function pollLiveState() {
           if (finishedJob) {
             const title = finishedJob.schedule_label ? `Scheduled job "${finishedJob.schedule_label}"` : 'Scraping job';
             if (finishedJob.status === 'done') {
-              showToast(`${title} finished (${finishedJob.events_found || 0} events, ${finishedJob.events_new || 0} new)`, 'success');
+              showToast(`${title} finished (${finishedJob.events_found || 0} events, ${finishedJob.events_new || 0} new, ${finishedJob.events_updated || 0} updated)`, 'success');
             } else if (finishedJob.status === 'failed') {
               showToast(`${title} failed`, 'error');
             }

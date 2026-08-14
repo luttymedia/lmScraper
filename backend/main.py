@@ -15,7 +15,7 @@ from urllib.parse import urlparse, quote as urlquote
 import urllib.request as urllib_request
 
 from backend.storage.db import (
-    init_db, list_jobs, get_job, delete_job, insert_job,
+    init_db, list_jobs, get_job, delete_job, insert_job, get_job_logs,
     query_events, delete_events as db_delete_events,
     list_schedules, get_schedule, insert_session, list_sessions,
     delete_session, get_session_for_domain,
@@ -147,6 +147,11 @@ async def get_job_route(job_id: str):
     job['is_active'] = job_id in get_active_job_ids()
     return job
 
+@app.get("/api/jobs/{job_id}/logs")
+async def get_job_logs_route(job_id: str):
+    logs = await get_job_logs(job_id)
+    return {"job_id": job_id, "logs": logs}
+
 @app.post("/api/jobs/{job_id}/pause")
 async def pause_job_route(job_id: str):
     if await pause_job(job_id):
@@ -182,6 +187,7 @@ async def delete_job_route(job_id: str):
 def parse_event_filters(
     job_id: str | None = None,
     job_ids: str | None = None,
+    updated_by_job_id: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     city: str | None = None,
@@ -193,7 +199,7 @@ def parse_event_filters(
     sort_dir: str | None = None
 ) -> dict:
     return {
-        "job_ids": job_ids or job_id, "date_from": date_from, "date_to": date_to,
+        "job_ids": job_ids or job_id, "updated_by_job_id": updated_by_job_id, "date_from": date_from, "date_to": date_to,
         "city": city, "keyword": keyword, "contact_hidden": contact_hidden,
         "has_email": has_email, "has_phone": has_phone,
         "sort_by": sort_by, "sort_dir": sort_dir
@@ -203,13 +209,14 @@ def parse_event_filters(
 async def get_events_route(
     page: int = 1, per_page: int = 20,
     job_id: str | None = None, job_ids: str | None = None,
+    updated_by_job_id: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, job_ids, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
     events, total = await query_events(filters, page, per_page)
     return {"events": events, "total": total, "page": page, "per_page": per_page}
 
@@ -221,25 +228,27 @@ async def delete_events_route(body: dict = Body(...)):
 @app.get("/api/events/export/csv")
 async def export_csv_route(
     job_id: str | None = None, job_ids: str | None = None,
+    updated_by_job_id: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, job_ids, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
     return await export_to_csv(filters)
 
 @app.get("/api/events/export/xlsx")
 async def export_xlsx_route(
     job_id: str | None = None, job_ids: str | None = None,
+    updated_by_job_id: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, job_ids, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
     return await export_to_xlsx(filters)
 
 # API Routes - Schedules

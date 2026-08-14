@@ -10,7 +10,7 @@ from datetime import datetime
 
 from backend.scraper.stealth import apply_stealth_page, get_stealth_launch_args, random_delay, inject_cookies
 from backend.scraper.html_cache import save_html, load_html, is_cached
-from backend.storage.db import insert_event, update_job
+from backend.storage.db import insert_event, update_job, insert_job_log
 from backend.scraper.base import BaseScraper
 from backend.scraper.goandance import GoAndDanceScraper
 from backend.scraper.extractors import content_hash
@@ -113,10 +113,15 @@ class ScraperConfig:
     platform: str = 'goandance'
     schedule_id: str | None = None
 
-async def emit(queue: asyncio.Queue, event: dict) -> None:
-    """Emit an event to the progress queue."""
+async def emit(queue: asyncio.Queue, event: dict, job_id: str | None = None) -> None:
+    """Emit an event to the progress queue and optionally persist log messages."""
     if queue:
         await queue.put(event)
+    if job_id and event.get('type') == 'log' and event.get('message'):
+        try:
+            await insert_job_log(job_id, event.get('level', 'info'), event['message'])
+        except Exception as e:
+            logger.error(f"Failed to save job log: {e}")
 
 async def _parse_showing_counter(page: Page) -> tuple[int, int]:
     """Parse 'Showing X of Y' / 'Mostrando X de Y' counter text.
@@ -321,7 +326,7 @@ async def scrape_detail_page(context: BrowserContext, url: str, config: ScraperC
 
 async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause_event: asyncio.Event, cancel_event: asyncio.Event) -> dict:
     """Main scraping engine function."""
-    stats = {"events_found": 0, "events_new": 0, "events_skipped": 0}
+    stats = {"events_found": 0, "events_new": 0, "events_updated": 0, "events_skipped": 0}
     
     async def check_state():
         while not pause_event.is_set():
@@ -329,8 +334,11 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
         if cancel_event.is_set():
             raise asyncio.CancelledError()
             
+    async def _emit(event: dict):
+        await emit(progress_queue, event, job_id=config.job_id)
+
     try:
-        await emit(progress_queue, {"type": "phase", "phase": 1, "label": "Starting browser"})
+        await _emit({"type": "phase", "phase": 1, "label": "Starting browser"})
         
         launch_kwargs = {
             "args": get_stealth_launch_args(),
@@ -354,22 +362,22 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
             effective_filters = {**(config.filters or {}), 'dance_style': config.dance_style}
             start_url = prepare_scrape_url(config.url, effective_filters, config.platform)
             await check_state()
-            await emit(progress_queue, {"type": "phase", "phase": 1, "label": f"Scanning {start_url}"})
-            await emit(progress_queue, {"type": "log", "level": "info", "message": f"Phase 1: Navigating to {start_url}..."})
+            await _emit({"type": "phase", "phase": 1, "label": f"Scanning {start_url}"})
+            await _emit({"type": "log", "level": "info", "message": f"Phase 1: Navigating to {start_url}..."})
             
             try:
                 await page.goto(start_url, wait_until='networkidle', timeout=60000)
             except Exception as e:
-                await emit(progress_queue, {"type": "error", "message": f"Failed to load start URL: {e}"})
+                await _emit({"type": "error", "message": f"Failed to load start URL: {e}"})
                 return stats
                 
             # Attempt to find pagination or scroll
             detail_urls = set()
 
             async def _emit_log(msg: str):
-                await emit(progress_queue, {"type": "log", "level": "info", "message": msg})
+                await _emit({"type": "log", "level": "info", "message": msg})
 
-            await emit(progress_queue, {"type": "log", "level": "info", "message": "Scrolling page and loading all events (clicking Load More until done)..."})
+            await _emit({"type": "log", "level": "info", "message": "Scrolling page and loading all events (clicking Load More until done)..."})
             await auto_scroll(page, check_state=check_state, emit_log=_emit_log)
             
             scraper = get_scraper(config.platform)
@@ -379,15 +387,15 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
             detail_urls_list = list(detail_urls)
             total = len(detail_urls_list)
             
-            await emit(progress_queue, {"type": "log", "level": "info", "message": f"Found {total} event links on listing page."})
+            await _emit({"type": "log", "level": "info", "message": f"Found {total} event links on listing page."})
             
             await update_job(config.job_id, {"resume_cursor": start_url})
             await page.close()
             
             # Phase 2: Details
             await check_state()
-            await emit(progress_queue, {"type": "phase", "phase": 2, "label": f"Scraping {total} events"})
-            await emit(progress_queue, {"type": "log", "level": "info", "message": f"Phase 2: Crawling {total} event detail pages (concurrency: {config.concurrency})..."})
+            await _emit({"type": "phase", "phase": 2, "label": f"Scraping {total} events"})
+            await _emit({"type": "log", "level": "info", "message": f"Phase 2: Crawling {total} event detail pages (concurrency: {config.concurrency})..."})
             
             sem = asyncio.Semaphore(config.concurrency)
             profile_urls = set()
@@ -400,7 +408,7 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
                     matches, reason = event_matches_filters(event, config.filters)
                     if not matches:
                         title = event.get('title') or url
-                        await emit(progress_queue, {"type": "log", "level": "info", "message": f"[{i}/{total}] Skipped: {title[:35]} ({reason})"})
+                        await _emit({"type": "log", "level": "info", "message": f"[{i}/{total}] Skipped: {title[:35]} ({reason})"})
                         continue
                         
                     stats["events_found"] += 1
@@ -410,35 +418,37 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
                         status_label = "new"
                         if prof:
                             profile_urls.add(prof)
-                            await emit(progress_queue, {"type": "log", "level": "info", "message": f"   └─ Found organizer profile: {prof}"})
+                            await _emit({"type": "log", "level": "info", "message": f"   └─ Found organizer profile: {prof}"})
                     elif insert_status == "duplicate_updated":
+                        stats["events_updated"] += 1
                         stats["events_skipped"] += 1
                         status_label = "duplicate, updated tags"
                     else:
                         stats["events_skipped"] += 1
                         status_label = "duplicate"
                     title = event.get('title') or url
-                    await emit(progress_queue, {"type": "log", "level": "info", "message": f"[{i}/{total}] Scraped: {title[:40]} ({status_label})"})
+                    await _emit({"type": "log", "level": "info", "message": f"[{i}/{total}] Scraped: {title[:40]} ({status_label})"})
                         
-                    await emit(progress_queue, {
+                    await _emit({
                         "type": "progress", "phase": 2, 
                         "processed": i, "total": total,
-                        "new": stats["events_new"], "skipped": stats["events_skipped"]
+                        "new": stats["events_new"], "updated": stats["events_updated"], "skipped": stats["events_skipped"]
                     })
                     
                     await update_job(config.job_id, {
                         "events_found": stats["events_found"],
                         "events_new": stats["events_new"],
+                        "events_updated": stats["events_updated"],
                         "resume_cursor": url
                     })
                 else:
-                    await emit(progress_queue, {"type": "log", "level": "warning", "message": f"[{i}/{total}] No event details parsed from {url}"})
+                    await _emit({"type": "log", "level": "warning", "message": f"[{i}/{total}] No event details parsed from {url}"})
                 
             # Phase 3: Profiles (Simplified: just saving HTML for now)
             if profile_urls:
                 await check_state()
-                await emit(progress_queue, {"type": "phase", "phase": 3, "label": f"Scanning {len(profile_urls)} profiles"})
-                await emit(progress_queue, {"type": "log", "level": "info", "message": f"Phase 3: Scanning {len(profile_urls)} organizer profiles..."})
+                await _emit({"type": "phase", "phase": 3, "label": f"Scanning {len(profile_urls)} profiles"})
+                await _emit({"type": "log", "level": "info", "message": f"Phase 3: Scanning {len(profile_urls)} organizer profiles..."})
                 for i, url in enumerate(profile_urls, 1):
                     await check_state()
                     async with sem:
@@ -455,7 +465,7 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
                             finally:
                                 if not p.is_closed():
                                     await p.close()
-                    await emit(progress_queue, {
+                    await _emit({
                         "type": "progress", "phase": 3,
                         "processed": i, "total": len(profile_urls),
                         "new": stats["events_new"], "skipped": stats["events_skipped"]
@@ -463,16 +473,16 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
                     
             await browser.close()
             
-        await emit(progress_queue, {"type": "log", "level": "success", "message": f"Scraping complete! Found {stats['events_found']} events ({stats['events_new']} new)."})
-        await emit(progress_queue, {"type": "done", "events_found": stats["events_found"], "events_new": stats["events_new"]})
+            await _emit({"type": "log", "level": "success", "message": f"Scraping complete! Found {stats['events_found']} events ({stats['events_new']} new, {stats['events_updated']} updated)."})
+        await _emit({"type": "done", "events_found": stats["events_found"], "events_new": stats["events_new"], "events_updated": stats["events_updated"]})
         
     except asyncio.CancelledError:
-        await emit(progress_queue, {"type": "log", "level": "warning", "message": "Job cancelled by user"})
-        await emit(progress_queue, {"type": "cancelled"})
+        await _emit({"type": "log", "level": "warning", "message": "Job cancelled by user"})
+        await _emit({"type": "cancelled"})
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
         logger.error(f"Scraper error: {e}\n{tb}")
-        await emit(progress_queue, {"type": "error", "message": f"{type(e).__name__}: {str(e)}\n{tb}"})
+        await _emit({"type": "error", "message": f"{type(e).__name__}: {str(e)}\n{tb}"})
         
     return stats

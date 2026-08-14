@@ -126,6 +126,29 @@ async def _run_scheduled_job(schedule_id: str) -> None:
 
 # ── Schedule Group Execution ──────────────────────────────────────────────────
 
+def _chain_sequential_job(job_id: str, group_id: str):
+    """Wait for the job to finish, then trigger the next schedule in the group."""
+    from backend.jobs.manager import active_jobs
+    job_state = active_jobs.get(job_id)
+    if not job_state or 'task' not in job_state:
+        return
+        
+    def on_done(fut):
+        if scheduler.running:
+            try:
+                scheduler.add_job(
+                    _run_group_job,
+                    trigger='date',
+                    run_date=datetime.now(),
+                    args=[group_id],
+                    id=f"group_{group_id}",
+                    replace_existing=True
+                )
+            except Exception as e:
+                logger.error(f"Error chaining next sequential job for group {group_id}: {e}")
+                
+    job_state['task'].add_done_callback(on_done)
+
 async def _run_group_job(group_id: str) -> None:
     """Callback triggered by APScheduler interval to run the next job in a group."""
     if group_id in _executing_groups:
@@ -177,6 +200,8 @@ async def _run_group_job(group_id: str) -> None:
 
         await start_job(job_id, config)
 
+        interval_mins = int(group.get('interval_minutes', 5))
+
         # Advance the index
         next_idx = idx + 1
         now_iso = datetime.utcnow().isoformat()
@@ -205,11 +230,17 @@ async def _run_group_job(group_id: str) -> None:
                     'last_triggered_at': now_iso
                 })
                 logger.info(f"[Group {group['name']}] All jobs completed. Looping back to first job.")
+                
+                if interval_mins == 0:
+                    _chain_sequential_job(job_id, group_id)
         else:
             await update_group(group_id, {
                 'current_index': next_idx,
                 'last_triggered_at': now_iso
             })
+            
+            if interval_mins == 0:
+                _chain_sequential_job(job_id, group_id)
 
     except Exception as e:
         logger.error(f"Error executing group job {group_id}: {e}")
@@ -251,13 +282,25 @@ async def start_scheduler() -> None:
             try:
                 interval_mins = int(g.get('interval_minutes', 5))
                 start_dt = datetime.fromisoformat(g['start_time']) if g.get('start_time') else None
-                scheduler.add_job(
-                    _run_group_job,
-                    trigger=IntervalTrigger(minutes=interval_mins, start_date=start_dt),
-                    args=[g['id']],
-                    id=f"group_{g['id']}",
-                    replace_existing=True
-                )
+                
+                if interval_mins > 0:
+                    scheduler.add_job(
+                        _run_group_job,
+                        trigger=IntervalTrigger(minutes=interval_mins, start_date=start_dt),
+                        args=[g['id']],
+                        id=f"group_{g['id']}",
+                        replace_existing=True
+                    )
+                else:
+                    run_date = start_dt if start_dt and start_dt > now else now
+                    scheduler.add_job(
+                        _run_group_job,
+                        trigger='date',
+                        run_date=run_date,
+                        args=[g['id']],
+                        id=f"group_{g['id']}",
+                        replace_existing=True
+                    )
             except Exception as e:
                 logger.error(f"Failed to load group {g['id']}: {e}")
 
@@ -447,16 +490,29 @@ async def resume_group_schedule(group_id: str) -> None:
     has_start_time = bool(group.get('start_time'))
     start_dt = datetime.fromisoformat(group['start_time']) if group.get('start_time') else None
 
-    scheduler.add_job(
-        _run_group_job,
-        trigger=IntervalTrigger(minutes=interval_mins, start_date=start_dt),
-        args=[group_id],
-        id=job_id,
-        replace_existing=True
-    )
+    if interval_mins > 0:
+        scheduler.add_job(
+            _run_group_job,
+            trigger=IntervalTrigger(minutes=interval_mins, start_date=start_dt),
+            args=[group_id],
+            id=job_id,
+            replace_existing=True
+        )
+    else:
+        now = datetime.now()
+        run_date = start_dt if start_dt and start_dt > now else now
+        scheduler.add_job(
+            _run_group_job,
+            trigger='date',
+            run_date=run_date,
+            args=[group_id],
+            id=job_id,
+            replace_existing=True
+        )
+
     await update_group(group_id, {'active': 1, 'completed_at': None})
 
-    if not has_start_time:
+    if not has_start_time and interval_mins > 0:
         asyncio.create_task(_run_group_job(group_id))
 
 async def reset_group_schedule(group_id: str) -> None:

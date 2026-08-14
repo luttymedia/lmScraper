@@ -1,9 +1,19 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 RELEASE_DATE = "2026-08-14"
 
 CHANGELOG = [
+    {
+        "version": "1.7.0",
+        "date": "2026-08-14",
+        "title": "Sequential Execution Mode & Reordering for Schedule Groups",
+        "changes": [
+            "Implemented Sequential (Immediate) mode for Schedule Groups to automatically chain jobs back-to-back with zero interval wait time",
+            "Fixed a bug where manual triggers of sequential groups caused all jobs to spawn simultaneously",
+            "Added a Reverse Order button to the Group Members modal for quick reordering without manual drag-and-drop"
+        ]
+    },
     {
         "version": "1.6.0",
         "date": "2026-08-14",

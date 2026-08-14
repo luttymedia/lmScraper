@@ -2048,7 +2048,8 @@ async function loadGroups() {
 }
 
 function _groupIntervalLabel(g) {
-  const mins = g.interval_minutes || 5;
+  const mins = g.interval_minutes != null ? g.interval_minutes : 5;
+  if (mins === 0) return `Sequential`;
   if (mins >= 60 && mins % 60 === 0) return `every ${mins / 60}h`;
   return `every ${mins}m`;
 }
@@ -2150,7 +2151,7 @@ window.editGroup = async (groupId) => {
   _editingGroupId = groupId;
   const nameEl = document.getElementById('group-name');
   if (nameEl) nameEl.value = g.name;
-  const mins = g.interval_minutes || 5;
+  const mins = g.interval_minutes != null ? g.interval_minutes : 5;
   const valEl = document.getElementById('group-interval-value');
   const unitEl = document.getElementById('group-interval-unit');
   if (mins >= 60 && mins % 60 === 0) {
@@ -2178,7 +2179,7 @@ document.getElementById('btn-save-group')?.addEventListener('click', async () =>
   const val = parseInt(document.getElementById('group-interval-value')?.value || '5', 10);
   const unit = document.getElementById('group-interval-unit')?.value || 'mins';
   const intervalMins = unit === 'hours' ? val * 60 : val;
-  if (!intervalMins || intervalMins < 1) return showToast('Interval must be at least 1 minute', 'error');
+  if (isNaN(intervalMins) || intervalMins < 0) return showToast('Interval must be at least 0 minutes', 'error');
   const loopMode = document.getElementById('group-loop-mode')?.value || 'loop';
   const startTime = document.getElementById('group-start-time')?.value || null;
   const payload = { name, interval_minutes: intervalMins, loop_mode: loopMode, start_time: startTime };

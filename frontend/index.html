@@ -7,10 +7,90 @@
   <title>LMScraper — Event Scraping Panel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono&display=swap"
-    rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="style.css?v=18">
+  <link rel="stylesheet" href="style.css?v=25">
+  <style>
+    .multiselect-list {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 2px !important;
+      overflow-x: auto !important;
+      overflow-y: auto !important;
+      max-height: 260px !important;
+      white-space: nowrap !important;
+    }
+    .multiselect-item {
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding: 3px 8px !important;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.72rem !important;
+      font-weight: 300 !important;
+      line-height: 1.25 !important;
+      white-space: nowrap !important;
+      width: max-content !important;
+      min-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    .multiselect-item:hover {
+      background: var(--surface-hover);
+    }
+    .multiselect-item input[type="checkbox"] {
+      margin: 0 !important;
+      cursor: pointer;
+      flex-shrink: 0 !important;
+      width: 13px !important;
+      height: 13px !important;
+      accent-color: var(--primary);
+      display: inline-block !important;
+    }
+    .multiselect-item-content {
+      display: inline-flex !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      gap: 6px !important;
+      white-space: nowrap !important;
+      flex-shrink: 0 !important;
+    }
+    .multiselect-item-name {
+      font-weight: 500 !important;
+      color: #38bdf8 !important;
+      font-size: 0.72rem !important;
+      flex-shrink: 0 !important;
+    }
+    .multiselect-item-sep {
+      color: #475569 !important;
+      font-size: 0.65rem !important;
+      flex-shrink: 0 !important;
+      user-select: none;
+    }
+    .multiselect-item-date {
+      font-size: 0.68rem !important;
+      color: #94a3b8 !important;
+      font-weight: 300 !important;
+      flex-shrink: 0 !important;
+    }
+    .multiselect-item-tag {
+      font-size: 0.65rem !important;
+      color: #cbd5e1 !important;
+      background: rgba(255, 255, 255, 0.06) !important;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 4px !important;
+      flex-shrink: 0 !important;
+    }
+    .multiselect-item-url {
+      font-family: 'JetBrains Mono', monospace !important;
+      font-size: 0.68rem !important;
+      color: #64748b !important;
+      font-weight: 300 !important;
+      flex-shrink: 0 !important;
+    }
+  </style>
 </head>
 
 <body>
@@ -19,7 +99,7 @@
     <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom: 8px;">
       <h1 style="margin:0;">LMScraper</h1>
       <button class="badge badge-done" id="btn-version" title="View Version & Changelog"
-        style="cursor: pointer; border: none; font-weight: 600; padding: 4px 8px; font-size: 0.75rem;">v1.1.0</button>
+        style="cursor: pointer; border: none; font-weight: 600; padding: 4px 8px; font-size: 0.75rem;">v1.2.0</button>
     </div>
     <nav>
       <a href="#" class="nav-item active" data-target="section-new-job">
@@ -75,27 +155,34 @@
             <label>Search Language</label>
             <div style="display: flex; gap: 16px; margin-top: 8px;">
               <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                <input type="radio" name="job_gad_lang" value="es" checked> ES
+                <input type="radio" name="job_gad_lang" value="es"> ES
               </label>
               <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                <input type="radio" name="job_gad_lang" value="en"> EN
+                <input type="radio" name="job_gad_lang" value="en" checked> EN
               </label>
             </div>
           </div>
         </div>
-        <div class="form-group mt-4">
-          <label>Target URL</label>
-          <div style="position: relative; display: flex; align-items: center;">
-            <input type="url" id="job-url" class="input btn-lg" value="https://www.goandance.com/es/eventos"
-              placeholder="https://www.goandance.com/es/eventos"
-              data-tooltip="Enter the full URL of an event listing page" style="padding-right: 80px; width: 100%;">
-            <div style="position: absolute; right: 10px; display: flex; align-items: center; gap: 4px;">
-              <button type="button" id="btn-copy-url" class="icon-btn" title="Copy Target URL">
-                <i data-lucide="copy"></i>
-              </button>
-              <button type="button" id="btn-clear-url" class="icon-btn" title="Clear Target URL">
-                <i data-lucide="x"></i>
-              </button>
+        <div class="grid" style="grid-template-columns: 1fr 2fr; gap: 16px; margin-top: 16px;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label>Job Nickname <span data-tooltip="Optional title to easily identify this job"><i data-lucide="info"
+                  class="icon-sm"></i></span></label>
+            <input type="text" id="job-nickname" class="input btn-lg" placeholder="e.g. Madrid Salsa Feb">
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label>Target URL</label>
+            <div style="position: relative; display: flex; align-items: center;">
+              <input type="url" id="job-url" class="input btn-lg" value="https://www.goandance.com/en/events"
+                placeholder="https://www.goandance.com/en/events"
+                data-tooltip="Enter the full URL of an event listing page" style="padding-right: 80px; width: 100%;">
+              <div style="position: absolute; right: 10px; display: flex; align-items: center; gap: 4px;">
+                <button type="button" id="btn-copy-url" class="icon-btn" title="Copy Target URL">
+                  <i data-lucide="copy"></i>
+                </button>
+                <button type="button" id="btn-clear-url" class="icon-btn" title="Clear Target URL">
+                  <i data-lucide="x"></i>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -231,9 +318,32 @@
         <input type="date" id="filter-date-to" class="input btn-sm" title="Date To">
         <input type="text" id="filter-city" class="input btn-sm" placeholder="City">
         <input type="text" id="filter-keyword" class="input btn-sm" placeholder="Keyword">
-        <select id="filter-job" class="select btn-sm">
-          <option value="">All Jobs</option>
-        </select>
+        <div class="custom-multiselect" id="job-multiselect-wrapper" style="position: relative;">
+          <button type="button" class="select btn-sm multiselect-trigger" id="job-multiselect-btn" style="text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 160px; max-width: 240px; cursor: pointer;">
+            <span id="job-multiselect-label" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">All Jobs</span>
+            <i data-lucide="chevron-down" class="icon-sm" style="flex-shrink: 0; width: 14px; height: 14px;"></i>
+          </button>
+          <div class="custom-multiselect-dropdown card hidden" id="job-multiselect-dropdown" style="position: absolute; top: calc(100% + 4px); left: 0; z-index: 1000; width: 520px; max-width: 92vw; padding: 12px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.8rem;">
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <button type="button" class="btn btn-ghost btn-xs" id="job-ms-select-all" style="border: 1px solid var(--border); font-size: 0.75rem;">Select all</button>
+                <button type="button" class="btn btn-ghost btn-xs" id="job-ms-clear" style="border: 1px solid var(--border); font-size: 0.75rem;">Clear</button>
+              </div>
+              <span id="job-ms-count" style="color: var(--text-muted); font-size: 0.75rem;">Displaying 0</span>
+            </div>
+            <div style="position: relative; margin-bottom: 8px;">
+              <input type="text" id="job-ms-search" class="input btn-sm" placeholder="Search jobs (name, URL, date)..." style="width: 100%; padding-right: 28px;">
+              <i data-lucide="search" class="icon-sm" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; width: 14px; height: 14px;"></i>
+            </div>
+            <div id="job-ms-list" class="multiselect-list" style="max-height: 260px; overflow-y: auto; overflow-x: auto; display: flex; flex-direction: column; gap: 2px; padding: 4px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-elevated);">
+              <!-- Checkbox items injected by JS -->
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border); padding-top: 8px;">
+              <button type="button" class="btn btn-ghost btn-sm" id="job-ms-btn-cancel">Cancel</button>
+              <button type="button" class="btn btn-primary btn-sm" id="job-ms-btn-ok">OK</button>
+            </div>
+          </div>
+        </div>
         <select id="filter-contact" class="select btn-sm">
           <option value="">Has Contact: Any</option>
           <option value="true">Yes</option>
@@ -286,6 +396,31 @@
         <button class="btn btn-secondary btn-sm" id="btn-refresh-jobs"><i data-lucide="refresh-cw" class="icon-sm"></i>
           Refresh</button>
       </div>
+
+      <div class="filter-bar" id="job-history-filters">
+        <input type="date" id="jh-filter-date-from" class="input btn-sm" title="Date From">
+        <input type="date" id="jh-filter-date-to" class="input btn-sm" title="Date To">
+        <input type="text" id="jh-filter-search" class="input btn-sm" placeholder="Search (URL, label, city...)">
+        <input type="text" id="jh-filter-platform" class="input btn-sm" placeholder="Platform" style="width: 120px;">
+        <input type="text" id="jh-filter-style" class="input btn-sm" placeholder="Dance Style" style="width: 120px;">
+        <select id="jh-filter-status" class="select btn-sm">
+          <option value="">Status: All</option>
+          <option value="done">Done</option>
+          <option value="running">Running</option>
+          <option value="pending">Pending</option>
+          <option value="error">Error</option>
+          <option value="canceled">Canceled</option>
+        </select>
+        <select id="jh-filter-source" class="select btn-sm">
+          <option value="">Source: All</option>
+          <option value="scheduled">Scheduled Only</option>
+          <option value="manual">Manual Only</option>
+        </select>
+        <button class="btn btn-primary btn-sm" id="jh-btn-apply">Apply</button>
+        <button class="btn btn-ghost btn-sm" id="jh-btn-clear">Reset</button>
+        <span id="jh-results-count" style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 4px; white-space: nowrap;"></span>
+      </div>
+
       <div id="job-history-list" class="grid grid-cols-2">
         <!-- populated by JS -->
       </div>
@@ -317,10 +452,10 @@
                 <label>Search Language</label>
                 <div style="display: flex; gap: 16px; margin-top: 8px;">
                   <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                    <input type="radio" name="sched_gad_lang" value="es" checked> ES
+                    <input type="radio" name="sched_gad_lang" value="es"> ES
                   </label>
                   <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                    <input type="radio" name="sched_gad_lang" value="en"> EN
+                    <input type="radio" name="sched_gad_lang" value="en" checked> EN
                   </label>
                 </div>
               </div>
@@ -329,8 +464,8 @@
           <div class="form-group" style="grid-column: span 2;">
             <label>Target URL</label>
             <div style="position: relative; display: flex; align-items: center;">
-              <input type="url" id="sched-url" class="input" value="https://www.goandance.com/es/eventos"
-                placeholder="https://www.goandance.com/es/eventos" style="padding-right: 80px; width: 100%;">
+              <input type="url" id="sched-url" class="input" value="https://www.goandance.com/en/events"
+                placeholder="https://www.goandance.com/en/events" style="padding-right: 80px; width: 100%;">
               <div style="position: absolute; right: 10px; display: flex; align-items: center; gap: 4px;">
                 <button type="button" id="btn-copy-sched-url" class="icon-btn" title="Copy Target URL">
                   <i data-lucide="copy"></i>
@@ -553,7 +688,7 @@
         <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--success); margin: 0;">LMScraper</h2>
         <div style="margin-top: 6px;">
           <span id="version-modal-tag"
-            style="display: inline-block; font-family: var(--font-mono); font-size: 0.78rem; padding: 3px 14px; border-radius: 9999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-secondary);">v1.1.0</span>
+            style="display: inline-block; font-family: var(--font-mono); font-size: 0.78rem; padding: 3px 14px; border-radius: 9999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-secondary);">v1.2.0</span>
         </div>
       </div>
 
@@ -742,7 +877,7 @@
 
   <div id="toast-container"></div>
 
-  <script type="module" src="app.js?v=33"></script>
+  <script type="module" src="app.js?v=43"></script>
   <script>lucide.createIcons();</script>
 </body>
 

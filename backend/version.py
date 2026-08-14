@@ -1,9 +1,19 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "1.1.0"
-RELEASE_DATE = "2026-08-13"
+VERSION = "1.2.0"
+RELEASE_DATE = "2026-08-14"
 
 CHANGELOG = [
+    {
+        "version": "1.2.0",
+        "date": "2026-08-14",
+        "title": "Results Table Enhancements, Advanced Filters & Job Nicknames",
+        "changes": [
+            "Added horizontal scroll to the Results table",
+            "Added filters to Jobs History page and improved jobs filter in Results page",
+            "Added nicknames to jobs"
+        ]
+    },
     {
         "version": "1.1.0",
         "date": "2026-08-13",

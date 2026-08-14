@@ -77,12 +77,29 @@ async def create_job_route(body: dict = Body(...)):
         if session and session.get('cookies_json'):
             session_cookies = session['cookies_json']
             
+    nickname = (body.get('nickname') or '').strip()
+    if not nickname:
+        style = body.get('dance_style')
+        city = (body.get('filters') or {}).get('city')
+        platform = body.get('platform', 'goandance')
+        platform_name = 'Go&Dance' if platform == 'goandance' else platform.capitalize()
+        now_str = datetime.utcnow().strftime('%b %d, %H:%M')
+        if style and city:
+            nickname = f"{style} in {city} · {now_str}"
+        elif style:
+            nickname = f"{style} · {now_str}"
+        elif city:
+            nickname = f"{platform_name} {city} · {now_str}"
+        else:
+            nickname = f"{platform_name} · {now_str}"
+
     job_dict = {
         'url': url,
         'filters': filters,
         'concurrency': concurrency,
         'dance_style': body.get('dance_style'),
-        'platform': body.get('platform', 'goandance')
+        'platform': body.get('platform', 'goandance'),
+        'nickname': nickname
     }
     job_id = await insert_job(job_dict)
     
@@ -160,6 +177,7 @@ async def delete_job_route(job_id: str):
 # API Routes - Events
 def parse_event_filters(
     job_id: str | None = None,
+    job_ids: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     city: str | None = None,
@@ -171,7 +189,7 @@ def parse_event_filters(
     sort_dir: str | None = None
 ) -> dict:
     return {
-        "job_id": job_id, "date_from": date_from, "date_to": date_to,
+        "job_ids": job_ids or job_id, "date_from": date_from, "date_to": date_to,
         "city": city, "keyword": keyword, "contact_hidden": contact_hidden,
         "has_email": has_email, "has_phone": has_phone,
         "sort_by": sort_by, "sort_dir": sort_dir
@@ -180,13 +198,14 @@ def parse_event_filters(
 @app.get("/api/events")
 async def get_events_route(
     page: int = 1, per_page: int = 20,
-    job_id: str | None = None, date_from: str | None = None,
+    job_id: str | None = None, job_ids: str | None = None,
+    date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
     events, total = await query_events(filters, page, per_page)
     return {"events": events, "total": total, "page": page, "per_page": per_page}
 
@@ -197,24 +216,26 @@ async def delete_events_route(body: dict = Body(...)):
 
 @app.get("/api/events/export/csv")
 async def export_csv_route(
-    job_id: str | None = None, date_from: str | None = None,
+    job_id: str | None = None, job_ids: str | None = None,
+    date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
     return await export_to_csv(filters)
 
 @app.get("/api/events/export/xlsx")
 async def export_xlsx_route(
-    job_id: str | None = None, date_from: str | None = None,
+    job_id: str | None = None, job_ids: str | None = None,
+    date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
     return await export_to_xlsx(filters)
 
 # API Routes - Schedules
@@ -334,10 +355,13 @@ async def delete_job_cache_route(job_id: str):
 # API Routes - Version & Changelog
 @app.get("/api/version")
 async def get_version_route():
+    import importlib
+    import backend.version
+    importlib.reload(backend.version)
     return {
-        "version": VERSION,
-        "release_date": RELEASE_DATE,
-        "changelog": CHANGELOG
+        "version": backend.version.VERSION,
+        "release_date": backend.version.RELEASE_DATE,
+        "changelog": backend.version.CHANGELOG
     }
 
 # API Routes - Location Autocomplete
@@ -431,23 +455,28 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
     finally:
         await unsubscribe(job_id, queue)
 
+NO_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0"
+}
+
 # Static files — serve CSS, JS, and other assets from the frontend directory
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
-    # Also mount at root level so index.html can reference ./style.css and ./app.js directly
     app.mount("/frontend", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend")
 
 @app.get("/style.css")
 async def serve_css():
-    return FileResponse(FRONTEND_DIR / "style.css", media_type="text/css")
+    return FileResponse(FRONTEND_DIR / "style.css", media_type="text/css", headers=NO_CACHE_HEADERS)
 
 @app.get("/app.js")
 async def serve_js():
-    return FileResponse(FRONTEND_DIR / "app.js", media_type="application/javascript")
+    return FileResponse(FRONTEND_DIR / "app.js", media_type="application/javascript", headers=NO_CACHE_HEADERS)
 
 @app.get("/")
 async def root():
     index_path = FRONTEND_DIR / "index.html"
     if index_path.exists():
-        return FileResponse(index_path)
+        return FileResponse(index_path, headers=NO_CACHE_HEADERS)
     return {"message": "Frontend not found. Make sure the frontend/ directory exists."}

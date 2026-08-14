@@ -258,7 +258,7 @@ function setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, location
       } catch (e) {}
     }
     const langRadio = document.querySelector(`input[name="${langRadiosName}"]:checked`);
-    const lang = langRadio ? langRadio.value : 'es';
+    const lang = langRadio ? langRadio.value : 'en';
     return new URL(getGadBaseUrl(lang));
   }
 
@@ -478,12 +478,82 @@ const btnClearSchedUrl = document.getElementById('btn-clear-sched-url');
 
 setupUrlSync(schedUrlInput, schedStyleInput, schedDateFromInput, schedDateToInput, schedLocationInput, schedLocationSuggestions, 'sched_gad_lang', btnCopySchedUrl, btnClearSchedUrl);
 
+// ── Smart Job Nicknames ──────────────────────────────────────────────────────
+
+let isNicknameManuallyEdited = false;
+
+function generateDefaultJobNickname() {
+  const platformRadio = document.querySelector('input[name="job_platform"]:checked');
+  const platform = platformRadio ? (platformRadio.value === 'goandance' ? 'Go&Dance' : platformRadio.value) : 'Go&Dance';
+  const style = document.getElementById('job-dance-style')?.value?.trim();
+  const city = document.getElementById('job-location')?.value?.trim();
+  const keyword = document.getElementById('job-keyword')?.value?.trim();
+  
+  const now = new Date();
+  const dateFormatted = now.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+
+  let mainPart = '';
+  if (style && city) {
+    mainPart = `${style} in ${city}`;
+  } else if (style) {
+    mainPart = `${style}`;
+  } else if (city) {
+    mainPart = `${platform} ${city}`;
+  } else if (keyword) {
+    mainPart = `${keyword} (${platform})`;
+  } else {
+    mainPart = `${platform}`;
+  }
+
+  return `${mainPart} · ${dateFormatted}`;
+}
+
+function syncDefaultNickname() {
+  const nickInput = document.getElementById('job-nickname');
+  if (!nickInput) return;
+  if (!isNicknameManuallyEdited || !nickInput.value.trim()) {
+    nickInput.value = generateDefaultJobNickname();
+  }
+}
+
+function setupNicknameSync() {
+  const nickInput = document.getElementById('job-nickname');
+  if (!nickInput) return;
+
+  nickInput.addEventListener('input', () => {
+    isNicknameManuallyEdited = (nickInput.value.trim().length > 0);
+  });
+
+  const inputsToWatch = [
+    document.getElementById('job-dance-style'),
+    document.getElementById('job-location'),
+    document.getElementById('job-keyword')
+  ];
+
+  inputsToWatch.forEach(input => {
+    if (input) {
+      input.addEventListener('input', syncDefaultNickname);
+      input.addEventListener('change', syncDefaultNickname);
+    }
+  });
+
+  document.querySelectorAll('input[name="job_platform"]').forEach(radio => {
+    radio.addEventListener('change', syncDefaultNickname);
+  });
+
+  if (!nickInput.value) {
+    nickInput.value = generateDefaultJobNickname();
+  }
+}
+
 UI.btnStart.addEventListener('click', async () => {
   const url = document.getElementById('job-url').value;
   if(!url) return showToast('Please enter a target URL', 'error');
 
+  const nickname = document.getElementById('job-nickname')?.value?.trim() || generateDefaultJobNickname();
   const payload = {
     url,
+    nickname,
     platform: document.querySelector('input[name="job_platform"]:checked')?.value || 'goandance',
     dance_style: document.getElementById('job-dance-style').value || null,
     filters: {
@@ -687,7 +757,7 @@ function getActiveFilters() {
     date_to: document.getElementById('filter-date-to')?.value || '',
     city: document.getElementById('filter-city')?.value || '',
     keyword: document.getElementById('filter-keyword')?.value || '',
-    job_id: document.getElementById('filter-job')?.value || '',
+    job_ids: Array.from(selectedJobIds).join(','),
     has_contact: document.getElementById('filter-contact')?.value || '',
     contact_hidden: document.getElementById('filter-hidden-contact')?.value || ''
   };
@@ -819,6 +889,9 @@ document.getElementById('btn-apply-filters').addEventListener('click', () => {
 
 document.getElementById('btn-reset-filters').addEventListener('click', () => {
   document.querySelectorAll('.filter-bar input, .filter-bar select').forEach(el => el.value = '');
+  selectedJobIds.clear();
+  updateJobMultiselectLabel();
+  renderJobMultiselectList();
   currentPage = 1;
   loadResults();
 });
@@ -856,122 +929,365 @@ document.getElementById('btn-export-xlsx').addEventListener('click', () => {
 
 // ── Job History ──────────────────────────────────────────────────────────────
 
+let allJobHistory = [];
+let selectedJobIds = new Set();
+
+function updateJobMultiselectLabel() {
+  const labelEl = document.getElementById('job-multiselect-label');
+  if (!labelEl) return;
+  if (selectedJobIds.size === 0) {
+    labelEl.textContent = 'All Jobs';
+  } else if (selectedJobIds.size === 1) {
+    const singleId = Array.from(selectedJobIds)[0];
+    const job = allJobHistory.find(j => j.id === singleId);
+    if (job) {
+      const name = job.nickname ? job.nickname : `${formatDate(job.created_at)} - ${truncate(job.url, 22)}`;
+      labelEl.textContent = `Job: ${name}`;
+    } else {
+      labelEl.textContent = '1 Job selected';
+    }
+  } else {
+    labelEl.textContent = `${selectedJobIds.size} Jobs selected`;
+  }
+}
+
+function renderJobMultiselectList() {
+  const listEl = document.getElementById('job-ms-list');
+  const countEl = document.getElementById('job-ms-count');
+  if (!listEl) return;
+
+  const q = (document.getElementById('job-ms-search')?.value || '').toLowerCase().trim();
+  listEl.innerHTML = '';
+
+  let visibleCount = 0;
+  allJobHistory.forEach(job => {
+    const nickname = (job.nickname || '').trim();
+    const f = typeof job.filters === 'string' ? JSON.parse(job.filters || '{}') : (job.filters || {});
+    const dateStr = formatDate(job.created_at);
+    const searchTarget = `${nickname} ${job.id} ${job.url} ${job.platform || ''} ${job.dance_style || ''} ${f.city || ''} ${f.keyword || ''} ${dateStr}`.toLowerCase();
+
+    if (q && !searchTarget.includes(q)) {
+      return;
+    }
+    visibleCount++;
+
+    let primaryName = nickname;
+    if (!primaryName) {
+      if (job.dance_style && f.city) {
+        primaryName = `${job.dance_style} in ${f.city}`;
+      } else if (job.dance_style) {
+        primaryName = `${job.dance_style}`;
+      } else if (f.city) {
+        primaryName = `${job.platform || 'Go&Dance'} ${f.city}`;
+      } else {
+        primaryName = `${job.platform || 'Go&Dance'}`;
+      }
+    }
+
+    const isChecked = selectedJobIds.has(job.id);
+    const item = document.createElement('label');
+    item.className = 'multiselect-item';
+    item.style.cssText = 'display: flex !important; flex-direction: row !important; align-items: center !important; gap: 8px !important; padding: 4px 8px !important; border-radius: 4px; cursor: pointer; white-space: nowrap !important; width: max-content !important; min-width: 100% !important; box-sizing: border-box !important; font-size: 0.72rem !important; font-weight: 300 !important; line-height: 1.3 !important; user-select: none;';
+    
+    item.innerHTML = `
+      <input type="checkbox" value="${job.id}" ${isChecked ? 'checked' : ''} class="job-ms-checkbox" style="margin: 0 !important; cursor: pointer; flex-shrink: 0 !important; width: 13px !important; height: 13px !important; display: inline-block !important;">
+      <div class="multiselect-item-content" style="display: inline-flex !important; flex-direction: row !important; align-items: center !important; gap: 6px !important; white-space: nowrap !important; flex-shrink: 0 !important;">
+        <span class="multiselect-item-name" style="font-weight: 500 !important; color: #38bdf8 !important; font-size: 0.74rem !important; flex-shrink: 0 !important;">${escapeHtml(primaryName)}</span>
+        <span class="multiselect-item-sep" style="color: #475569 !important; font-size: 0.65rem !important; flex-shrink: 0 !important;">·</span>
+        <span class="multiselect-item-date" style="font-size: 0.68rem !important; color: #94a3b8 !important; font-weight: 300 !important; flex-shrink: 0 !important;">${dateStr}</span>
+        ${job.dance_style && !primaryName.includes(job.dance_style) ? `<span class="multiselect-item-tag" style="font-size: 0.65rem !important; color: #cbd5e1 !important; background: rgba(255,255,255,0.06) !important; border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px !important; flex-shrink: 0 !important;">${escapeHtml(job.dance_style)}</span><span class="multiselect-item-sep" style="color: #475569 !important; font-size: 0.65rem !important; flex-shrink: 0 !important;">·</span>` : '<span class="multiselect-item-sep" style="color: #475569 !important; font-size: 0.65rem !important; flex-shrink: 0 !important;">·</span>'}
+        <span class="multiselect-item-url" style="font-family: \'JetBrains Mono\', monospace !important; font-size: 0.68rem !important; color: #64748b !important; font-weight: 300 !important; flex-shrink: 0 !important;" title="${escapeHtml(job.url)}">${escapeHtml(job.url)}</span>
+      </div>
+    `;
+    listEl.appendChild(item);
+  });
+
+  if (countEl) {
+    countEl.textContent = `Displaying ${visibleCount}`;
+  }
+
+  if (visibleCount === 0) {
+    listEl.innerHTML = '<div style="font-size:0.8rem; color:var(--text-muted); padding:12px; text-align:center;">No matching jobs</div>';
+  }
+}
+
+function setupJobMultiselectEvents() {
+  const triggerBtn = document.getElementById('job-multiselect-btn');
+  const dropdown = document.getElementById('job-multiselect-dropdown');
+  const searchInput = document.getElementById('job-ms-search');
+  const selectAllBtn = document.getElementById('job-ms-select-all');
+  const clearBtn = document.getElementById('job-ms-clear');
+  const okBtn = document.getElementById('job-ms-btn-ok');
+  const cancelBtn = document.getElementById('job-ms-btn-cancel');
+
+  if (triggerBtn && dropdown) {
+    triggerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = dropdown.classList.contains('hidden');
+      document.querySelectorAll('.custom-multiselect-dropdown, #column-visibility-panel').forEach(p => {
+        if (p !== dropdown) p.classList.add('hidden');
+      });
+      if (isHidden) {
+        dropdown.classList.remove('hidden');
+        renderJobMultiselectList();
+        if (searchInput) {
+          searchInput.value = '';
+          searchInput.focus();
+        }
+      } else {
+        dropdown.classList.add('hidden');
+      }
+    });
+
+    dropdown.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    document.addEventListener('click', () => {
+      dropdown.classList.add('hidden');
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      renderJobMultiselectList();
+    });
+  }
+
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('#job-ms-list .job-ms-checkbox').forEach(cb => {
+        cb.checked = true;
+      });
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('#job-ms-list .job-ms-checkbox').forEach(cb => {
+        cb.checked = false;
+      });
+    });
+  }
+
+  if (okBtn) {
+    okBtn.addEventListener('click', () => {
+      selectedJobIds.clear();
+      document.querySelectorAll('#job-ms-list .job-ms-checkbox:checked').forEach(cb => {
+        selectedJobIds.add(cb.value);
+      });
+      if (dropdown) dropdown.classList.add('hidden');
+      updateJobMultiselectLabel();
+      currentPage = 1;
+      loadResults();
+    });
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      if (dropdown) dropdown.classList.add('hidden');
+      renderJobMultiselectList();
+    });
+  }
+}
+
 async function loadJobHistory(selectedJobId) {
   try {
-    const res = await api('/api/jobs');
+    const res = await api('/api/jobs?per_page=1000');
     const jobs = Array.isArray(res) ? res : (res.jobs || []);
-    const container = document.getElementById('job-history-list');
-    if (container) container.innerHTML = '';
+    allJobHistory = jobs;
     
-    // populate job filter dropdown
-    const jobFilter = document.getElementById('filter-job');
-    const targetJobId = selectedJobId !== undefined 
-      ? selectedJobId 
-      : (jobFilter ? jobFilter.value : '');
-
-    if (jobFilter) {
-      jobFilter.innerHTML = '<option value="">All Jobs</option>';
-      jobs.forEach(job => {
-        const opt = document.createElement('option');
-        opt.value = job.id;
-        opt.textContent = `${formatDate(job.created_at)} - ${truncate(job.url, 30)}`;
-        if (job.id === targetJobId) opt.selected = true;
-        jobFilter.appendChild(opt);
-      });
-      if (targetJobId) {
-        jobFilter.value = targetJobId;
+    if (selectedJobId !== undefined) {
+      if (selectedJobId) {
+        selectedJobIds = new Set([selectedJobId]);
+      } else {
+        selectedJobIds.clear();
       }
     }
     
-    if(container) {
-      if(jobs.length === 0) {
-        container.innerHTML = `<div class="empty-state" style="grid-column: span 2">
-          <div class="empty-state-icon">${ICONS.clock}</div><p>No job history</p></div>`;
-        return;
-      }
-
-      let isRunning = false;
-      jobs.forEach(job => {
-        if(job.status === 'running' || job.status === 'pending') isRunning = true;
-
-        // Extract filter tags
-        let filterTags = [];
-        if (job.schedule_id || job.schedule_label) {
-          const schedLabel = job.schedule_label || 'Scheduled Job';
-          filterTags.push(`<span class="tag" style="background:rgba(52, 211, 153, 0.15); color:#4ade80; border:1px solid rgba(52, 211, 153, 0.35); font-weight:600;" title="Created by Schedule: ${schedLabel}">⏱️ ${escapeHtml(schedLabel)}</span>`);
-        }
-        if (job.platform) filterTags.push(`<span class="tag" style="background:var(--surface-elevated)">🏢 ${job.platform}</span>`);
-        if (job.dance_style) filterTags.push(`<span class="tag" style="background:var(--primary);color:#fff">💃 ${job.dance_style}</span>`);
-        
-        const f = typeof job.filters === 'string' ? JSON.parse(job.filters || '{}') : (job.filters || {});
-        if (f.city) filterTags.push(`<span class="tag">📍 ${escapeHtml(f.city)}</span>`);
-        if (f.keyword) filterTags.push(`<span class="tag">🔍 ${escapeHtml(f.keyword)}</span>`);
-        if (f.date_from || f.date_to) filterTags.push(`<span class="tag">📅 ${escapeHtml(f.date_from || 'Any')} → ${escapeHtml(f.date_to || 'Any')}</span>`);
-        
-        const filterHtml = filterTags.length > 0 
-          ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">${filterTags.join('')}</div>`
-          : `<div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px;">No filter parameters</div>`;
-
-        let durationStr = 'N/A';
-        if (job.started_at) {
-          const start = new Date(job.started_at).getTime();
-          const end = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
-          const diffSecs = Math.floor((end - start) / 1000);
-          if (diffSecs < 60) {
-            durationStr = `${diffSecs}s`;
-          } else {
-            const m = Math.floor(diffSecs / 60);
-            const s = diffSecs % 60;
-            durationStr = `${m}m ${s}s`;
-          }
-        }
-
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <div style="font-size:0.8rem; color:var(--text-secondary); display:flex; align-items:center; gap:6px;">
-              <span>${formatDate(job.created_at)}</span>
-            </div>
-            <span class="badge badge-${job.status}">${job.status}</span>
-          </div>
-
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--surface-elevated); border:1px solid var(--border); border-radius:8px; padding:7px 10px; margin-bottom:12px; font-family:'JetBrains Mono', monospace; font-size:0.8rem;">
-            <a href="${job.url}" target="_blank" style="color:var(--text-primary); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${job.url}">
-              ${job.url}
-            </a>
-            <div style="display:inline-flex; gap:4px; flex-shrink:0; align-items:center;">
-              <button class="icon-btn" onclick="copyJobUrl('${escapeJs(job.url)}')" title="Copy Full Target URL" style="padding:3px; color:var(--text-secondary);">
-                ${ICONS.copy}
-              </button>
-              <a href="${job.url}" target="_blank" class="icon-btn" title="Open Target URL in new tab" style="padding:3px; color:var(--text-secondary); text-decoration:none;">
-                ${ICONS.external}
-              </a>
-            </div>
-          </div>
-
-          ${filterHtml}
-          <div class="grid grid-cols-2" style="font-size:0.875rem; color:var(--text-secondary); margin-bottom:16px; gap:8px;">
-            <div>Events found: <strong style="color:var(--text-primary)">${job.events_found || 0}</strong></div>
-            <div>New: <strong style="color:var(--success)">${job.events_new || 0}</strong></div>
-            <div>Duration: <strong style="color:var(--text-primary)">${durationStr}</strong></div>
-          </div>
-          <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap;">
-            <button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="viewJobResults('${job.id}')">${ICONS.chart} View Results</button>
-            ${job.status === 'running' || job.status === 'pending'
-              ? `<button class="btn btn-danger btn-sm" style="white-space:nowrap; background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;" onclick="cancelJobHistory('${job.id}')">${ICONS.pause} Stop</button>`
-              : `<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="rerunJob('${job.id}')">${ICONS.repeat} Rerun</button>`
-            }
-            <button class="btn btn-danger btn-sm" style="white-space:nowrap;" onclick="deleteJob('${job.id}')">${ICONS.trash} Delete</button>
-          </div>
-        `;
-        container.appendChild(card);
-      });
-    }
+    updateJobMultiselectLabel();
+    renderJobMultiselectList();
+    renderJobHistory();
   } catch(e) {
     console.error('Failed to load job history', e);
   }
 }
+
+function renderJobHistory() {
+  const container = document.getElementById('job-history-list');
+  if (!container) return;
+  container.innerHTML = '';
+
+  // Get filter values
+  const qSearch = (document.getElementById('jh-filter-search')?.value || '').toLowerCase();
+  const qDateFrom = document.getElementById('jh-filter-date-from')?.value || '';
+  const qDateTo = document.getElementById('jh-filter-date-to')?.value || '';
+  const qStatus = document.getElementById('jh-filter-status')?.value || '';
+  const qSource = document.getElementById('jh-filter-source')?.value || '';
+  const qPlatform = (document.getElementById('jh-filter-platform')?.value || '').toLowerCase();
+  const qStyle = (document.getElementById('jh-filter-style')?.value || '').toLowerCase();
+
+  const filteredJobs = allJobHistory.filter(job => {
+    // Search includes nickname, id, url, schedule label, platform, style, city, keyword
+    if (qSearch) {
+      const f = typeof job.filters === 'string' ? JSON.parse(job.filters || '{}') : (job.filters || {});
+      const searchStr = `${job.nickname || ''} ${job.id} ${job.url} ${job.schedule_label || ''} ${job.platform || ''} ${job.dance_style || ''} ${f.city || ''} ${f.keyword || ''}`.toLowerCase();
+      if (!searchStr.includes(qSearch)) return false;
+    }
+    // Status
+    if (qStatus && job.status !== qStatus) return false;
+    // Source
+    if (qSource === 'scheduled' && !job.schedule_id) return false;
+    if (qSource === 'manual' && job.schedule_id) return false;
+    // Platform
+    if (qPlatform && !(job.platform || '').toLowerCase().includes(qPlatform)) return false;
+    // Style
+    if (qStyle && !(job.dance_style || '').toLowerCase().includes(qStyle)) return false;
+    // Date
+    if (qDateFrom || qDateTo) {
+      const jobDate = new Date(job.created_at);
+      jobDate.setHours(0, 0, 0, 0);
+      if (qDateFrom) {
+        const fromDate = new Date(qDateFrom);
+        fromDate.setHours(0, 0, 0, 0);
+        if (jobDate < fromDate) return false;
+      }
+      if (qDateTo) {
+        const toDate = new Date(qDateTo);
+        toDate.setHours(0, 0, 0, 0);
+        if (jobDate > toDate) return false;
+      }
+    }
+    return true;
+  });
+
+  const countEl = document.getElementById('jh-results-count');
+  if (countEl) {
+    if (allJobHistory.length === 0) {
+      countEl.textContent = '0 jobs';
+    } else if (filteredJobs.length === allJobHistory.length) {
+      countEl.textContent = `${filteredJobs.length} jobs`;
+    } else {
+      countEl.textContent = `${filteredJobs.length} of ${allJobHistory.length} jobs`;
+    }
+  }
+
+  if(filteredJobs.length === 0) {
+    container.innerHTML = `<div class="empty-state" style="grid-column: span 2">
+      <div class="empty-state-icon">${ICONS.clock}</div><p>No job history matches your filters</p></div>`;
+    return;
+  }
+
+  let isRunning = false;
+  filteredJobs.forEach(job => {
+    if(job.status === 'running' || job.status === 'pending') isRunning = true;
+
+    // Extract filter tags
+    let filterTags = [];
+    if (job.schedule_id || job.schedule_label) {
+      const schedLabel = job.schedule_label || 'Scheduled Job';
+      filterTags.push(`<span class="tag" style="background:rgba(52, 211, 153, 0.15); color:#4ade80; border:1px solid rgba(52, 211, 153, 0.35); font-weight:600;" title="Created by Schedule: ${schedLabel}">⏱️ ${escapeHtml(schedLabel)}</span>`);
+    }
+    if (job.platform) filterTags.push(`<span class="tag" style="background:var(--surface-elevated)">🏢 ${job.platform}</span>`);
+    if (job.dance_style) filterTags.push(`<span class="tag" style="background:var(--primary);color:#fff">💃 ${job.dance_style}</span>`);
+    
+    const f = typeof job.filters === 'string' ? JSON.parse(job.filters || '{}') : (job.filters || {});
+    if (f.city) filterTags.push(`<span class="tag">📍 ${escapeHtml(f.city)}</span>`);
+    if (f.keyword) filterTags.push(`<span class="tag">🔍 ${escapeHtml(f.keyword)}</span>`);
+    if (f.date_from || f.date_to) filterTags.push(`<span class="tag">📅 ${escapeHtml(f.date_from || 'Any')} → ${escapeHtml(f.date_to || 'Any')}</span>`);
+    
+    const filterHtml = filterTags.length > 0 
+      ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">${filterTags.join('')}</div>`
+      : `<div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px;">No filter parameters</div>`;
+
+    let durationStr = 'N/A';
+    if (job.started_at) {
+      const start = new Date(job.started_at).getTime();
+      const end = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
+      const diffSecs = Math.floor((end - start) / 1000);
+      if (diffSecs < 60) {
+        durationStr = `${diffSecs}s`;
+      } else {
+        const m = Math.floor(diffSecs / 60);
+        const s = diffSecs % 60;
+        durationStr = `${m}m ${s}s`;
+      }
+    }
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+        <div>
+          ${job.nickname ? `<div style="font-weight:500; font-size:0.875rem; color:#38bdf8; margin-bottom:2px;">${escapeHtml(job.nickname)}</div>` : ''}
+          <div style="font-size:0.75rem; color:var(--text-muted);">
+            <span>${formatDate(job.created_at)}</span>
+          </div>
+        </div>
+        <span class="badge badge-${job.status}">${job.status}</span>
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--surface-elevated); border:1px solid var(--border); border-radius:8px; padding:7px 10px; margin-bottom:12px; font-family:'JetBrains Mono', monospace; font-size:0.8rem;">
+        <a href="${job.url}" target="_blank" style="color:var(--text-primary); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${job.url}">
+          ${job.url}
+        </a>
+        <div style="display:inline-flex; gap:4px; flex-shrink:0; align-items:center;">
+          <button class="icon-btn" onclick="copyJobUrl('${escapeJs(job.url)}')" title="Copy Full Target URL" style="padding:3px; color:var(--text-secondary);">
+            ${ICONS.copy}
+          </button>
+          <a href="${job.url}" target="_blank" class="icon-btn" title="Open Target URL in new tab" style="padding:3px; color:var(--text-secondary); text-decoration:none;">
+            ${ICONS.external}
+          </a>
+        </div>
+      </div>
+
+      ${filterHtml}
+      <div style="display:flex; align-items:center; gap:14px; font-size:0.8rem; color:var(--text-secondary); margin-bottom:14px;">
+        <div>Events found: <strong style="color:var(--text-primary)">${job.events_found || 0}</strong></div>
+        <div style="color:var(--border); font-size:0.7rem;">•</div>
+        <div>New: <strong style="color:var(--success)">${job.events_new || 0}</strong></div>
+        <div style="color:var(--border); font-size:0.7rem;">•</div>
+        <div>Duration: <strong style="color:var(--text-primary)">${durationStr}</strong></div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap;">
+        <button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="viewJobResults('${job.id}')">${ICONS.chart} View Results</button>
+        ${job.status === 'running' || job.status === 'pending'
+          ? `<button class="btn btn-danger btn-sm" style="white-space:nowrap; background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;" onclick="cancelJobHistory('${job.id}')">${ICONS.pause} Stop</button>`
+          : `<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="rerunJob('${job.id}')">${ICONS.repeat} Rerun</button>`
+        }
+        <button class="btn btn-danger btn-sm" style="white-space:nowrap;" onclick="deleteJob('${job.id}')">${ICONS.trash} Delete</button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Event listeners for Job History Filters
+  document.getElementById('jh-btn-apply')?.addEventListener('click', () => {
+    renderJobHistory();
+  });
+
+  document.getElementById('jh-btn-clear')?.addEventListener('click', () => {
+    document.querySelectorAll('#job-history-filters input, #job-history-filters select').forEach(el => el.value = '');
+    renderJobHistory();
+  });
+
+  // Also filter on change / enter key
+  document.querySelectorAll('#job-history-filters input').forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') renderJobHistory();
+    });
+  });
+
+  document.querySelectorAll('#job-history-filters select, #job-history-filters input[type="date"]').forEach(el => {
+    el.addEventListener('change', () => {
+      renderJobHistory();
+    });
+  });
+});
 
 window.viewJobResults = async (jobId) => {
   // Navigate to Results section
@@ -994,11 +1310,10 @@ window.viewJobResults = async (jobId) => {
     el.value = '';
   });
 
-  // Populate job dropdown options and select this jobId
-  await loadJobHistory(jobId);
-
-  const jobFilter = document.getElementById('filter-job');
-  if (jobFilter) jobFilter.value = jobId;
+  // Select this jobId in multiselect
+  selectedJobIds = new Set([jobId]);
+  updateJobMultiselectLabel();
+  renderJobMultiselectList();
 
   currentPage = 1;
   await loadResults();
@@ -1019,11 +1334,15 @@ window.rerunJob = async (jobId) => {
     const newJobNav = document.querySelector('.nav-item[data-target="section-new-job"]');
     if (newJobNav) newJobNav.click();
 
+    // Populate Nickname
+    const nicknameInput = document.getElementById('job-nickname');
+    if (nicknameInput) nicknameInput.value = job.nickname || '';
+
     // Populate URL
     const urlInput = document.getElementById('job-url');
     if (urlInput) {
-      urlInput.value = job.url || GAD_BASE_ES;
-      syncUrlToGadLanguage(job.url || GAD_BASE_ES, 'job_gad_lang');
+      urlInput.value = job.url || GAD_BASE_EN;
+      syncUrlToGadLanguage(job.url || GAD_BASE_EN, 'job_gad_lang');
     }
 
     // Populate Platform radio
@@ -1339,13 +1658,13 @@ function resetScheduleForm() {
   currentEditingScheduleId = null;
   document.getElementById('sched-label').value = '';
   
-  const defaultLang = document.querySelector('input[name="sched_gad_lang"][value="es"]');
+  const defaultLang = document.querySelector('input[name="sched_gad_lang"][value="en"]');
   if (defaultLang) defaultLang.checked = true;
 
   const schedUrl = document.getElementById('sched-url');
   if (schedUrl) {
-    schedUrl.value = GAD_BASE_ES;
-    schedUrl.placeholder = GAD_BASE_ES;
+    schedUrl.value = GAD_BASE_EN;
+    schedUrl.placeholder = GAD_BASE_EN;
   }
 
   document.getElementById('sched-date-from').value = '';
@@ -1805,34 +2124,36 @@ async function pollLiveState() {
       schedDot.style.display = hasRunningScheduledJob ? 'inline-block' : 'none';
     }
 
-    // 2. Fetch recent jobs to sync history / table data
-    const res = await api('/api/jobs?page=1&per_page=20');
-    const jobs = Array.isArray(res) ? res : (res.jobs || []);
+    // 2. Fetch recent jobs to sync history / table data only if something is running or just finished
+    if (activeJobIds.length > 0 || prevRunningJobIds.size > 0) {
+      const res = await api('/api/jobs?page=1&per_page=1000');
+      const jobs = Array.isArray(res) ? res : (res.jobs || []);
 
-    // Detect if a job just finished
-    const currentRunningIds = new Set(activeJobIds.length > 0 ? activeJobIds : jobs.filter(j => j.status === 'running' || j.status === 'pending').map(j => j.id));
-    for (const prevId of prevRunningJobIds) {
-      if (!currentRunningIds.has(prevId)) {
-        const finishedJob = jobs.find(j => j.id === prevId);
-        if (finishedJob) {
-          const title = finishedJob.schedule_label ? `Scheduled job "${finishedJob.schedule_label}"` : 'Scraping job';
-          if (finishedJob.status === 'done') {
-            showToast(`${title} finished (${finishedJob.events_found || 0} events, ${finishedJob.events_new || 0} new)`, 'success');
-          } else if (finishedJob.status === 'failed') {
-            showToast(`${title} failed`, 'error');
+      // Detect if a job just finished
+      const currentRunningIds = new Set(activeJobIds.length > 0 ? activeJobIds : jobs.filter(j => j.status === 'running' || j.status === 'pending').map(j => j.id));
+      for (const prevId of prevRunningJobIds) {
+        if (!currentRunningIds.has(prevId)) {
+          const finishedJob = jobs.find(j => j.id === prevId);
+          if (finishedJob) {
+            const title = finishedJob.schedule_label ? `Scheduled job "${finishedJob.schedule_label}"` : 'Scraping job';
+            if (finishedJob.status === 'done') {
+              showToast(`${title} finished (${finishedJob.events_found || 0} events, ${finishedJob.events_new || 0} new)`, 'success');
+            } else if (finishedJob.status === 'failed') {
+              showToast(`${title} failed`, 'error');
+            }
           }
+          if (activeSectionId === 'section-scheduler') loadSchedules();
+          if (activeSectionId === 'section-results') loadResults();
         }
-        if (activeSectionId === 'section-scheduler') loadSchedules();
-        if (activeSectionId === 'section-results') loadResults();
       }
-    }
-    prevRunningJobIds = currentRunningIds;
+      prevRunningJobIds = currentRunningIds;
 
-    // Live update currently viewed section
-    if (activeSectionId === 'section-job-history') {
-      loadJobHistory();
-    } else if (activeSectionId === 'section-scheduler') {
-      loadSchedules();
+      // Live update currently viewed section only when jobs are actively running or just finished
+      if (activeSectionId === 'section-job-history') {
+        loadJobHistory();
+      } else if (activeSectionId === 'section-scheduler') {
+        loadSchedules();
+      }
     }
   } catch (e) {
     // Ignore polling errors
@@ -1870,6 +2191,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   setupNavigation();
   setupResultsColumns();
+  setupJobMultiselectEvents();
+  setupNicknameSync();
   
   Promise.allSettled([
     loadVersionInfo(),
@@ -1881,8 +2204,8 @@ document.addEventListener('DOMContentLoaded', () => {
     pollLiveState()
   ]);
   
-  // Real-time status sync every 2.5 seconds
-  setInterval(pollLiveState, 2500);
+  // Real-time status sync every 5 seconds
+  setInterval(pollLiveState, 5000);
   // Monitor stats every 60 seconds
   setInterval(loadMonitorStats, 60000);
 });

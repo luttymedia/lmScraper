@@ -77,7 +77,8 @@ async def init_db() -> None:
                 resume_cursor TEXT,
                 schedule_id TEXT,
                 dance_style TEXT,
-                platform TEXT DEFAULT 'goandance'
+                platform TEXT DEFAULT 'goandance',
+                nickname TEXT
             )
         ''')
         await db.execute('''
@@ -120,6 +121,12 @@ async def init_db() -> None:
 
         try:
             await db.execute('ALTER TABLE jobs ADD COLUMN platform TEXT DEFAULT "goandance"')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
+        try:
+            await db.execute('ALTER TABLE jobs ADD COLUMN nickname TEXT')
             await db.commit()
         except aiosqlite.OperationalError:
             pass  # Column already exists
@@ -190,9 +197,19 @@ async def query_events(filters: dict, page: int, per_page: int) -> tuple[list[di
     conditions = []
     params = []
     
-    if filters.get('job_id'):
-        conditions.append("job_id = ?")
-        params.append(filters['job_id'])
+    job_ids_raw = filters.get('job_ids') or filters.get('job_id')
+    if job_ids_raw:
+        if isinstance(job_ids_raw, list):
+            ids = [str(j).strip() for j in job_ids_raw if str(j).strip()]
+        else:
+            ids = [jid.strip() for jid in str(job_ids_raw).split(',') if jid.strip()]
+        if len(ids) == 1:
+            conditions.append("job_id = ?")
+            params.append(ids[0])
+        elif len(ids) > 1:
+            placeholders = ', '.join(['?'] * len(ids))
+            conditions.append(f"job_id IN ({placeholders})")
+            params.extend(ids)
     
     if filters.get('date_from'):
         conditions.append("date_start >= ?")
@@ -254,9 +271,19 @@ async def delete_events(filters: dict) -> int:
     conditions = []
     params = []
     
-    if filters.get('job_id'):
-        conditions.append("job_id = ?")
-        params.append(filters['job_id'])
+    job_ids_raw = filters.get('job_ids') or filters.get('job_id')
+    if job_ids_raw:
+        if isinstance(job_ids_raw, list):
+            ids = [str(j).strip() for j in job_ids_raw if str(j).strip()]
+        else:
+            ids = [jid.strip() for jid in str(job_ids_raw).split(',') if jid.strip()]
+        if len(ids) == 1:
+            conditions.append("job_id = ?")
+            params.append(ids[0])
+        elif len(ids) > 1:
+            placeholders = ', '.join(['?'] * len(ids))
+            conditions.append(f"job_id IN ({placeholders})")
+            params.extend(ids)
     
     where_clause = " AND ".join(conditions) if conditions else "1=0" # Fail safe
     if where_clause == "1=0":

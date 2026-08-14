@@ -92,7 +92,24 @@ async def init_db() -> None:
                 active INTEGER DEFAULT 1,
                 created_at TEXT NOT NULL,
                 label TEXT,
-                platform TEXT DEFAULT 'goandance'
+                platform TEXT DEFAULT 'goandance',
+                group_id TEXT,
+                order_index INTEGER DEFAULT 0
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS schedule_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                interval_minutes INTEGER NOT NULL DEFAULT 5,
+                loop_mode TEXT NOT NULL DEFAULT 'loop',
+                current_index INTEGER NOT NULL DEFAULT 0,
+                active INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                last_triggered_at TEXT,
+                completed_at TEXT,
+                start_time TEXT
+
             )
         ''')
         await db.execute('''
@@ -104,9 +121,27 @@ async def init_db() -> None:
                 created_at TEXT NOT NULL
             )
         ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS schedule_group_memberships (
+                group_id TEXT NOT NULL,
+                schedule_id TEXT NOT NULL,
+                order_index INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (group_id, schedule_id),
+                FOREIGN KEY (group_id) REFERENCES schedule_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+            )
+        ''')
         await db.commit()
         
         # Migrations
+        # Migrate legacy single-group assignments to join table
+        await db.execute('''
+            INSERT OR IGNORE INTO schedule_group_memberships (group_id, schedule_id, order_index)
+            SELECT group_id, id, order_index 
+            FROM schedules 
+            WHERE group_id IS NOT NULL
+        ''')
+        await db.commit()
         try:
             await db.execute("ALTER TABLE events ADD COLUMN dance_style TEXT")
             await db.commit()
@@ -139,6 +174,24 @@ async def init_db() -> None:
 
         try:
             await db.execute('ALTER TABLE schedules ADD COLUMN dance_style TEXT')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
+        try:
+            await db.execute('ALTER TABLE schedules ADD COLUMN group_id TEXT')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
+        try:
+            await db.execute('ALTER TABLE schedules ADD COLUMN order_index INTEGER DEFAULT 0')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
+        try:
+            await db.execute('ALTER TABLE schedule_groups ADD COLUMN start_time TEXT')
             await db.commit()
         except aiosqlite.OperationalError:
             pass  # Column already exists
@@ -448,12 +501,21 @@ async def update_schedule(sched_id: str, updates: dict) -> None:
         await db.commit()
 
 async def get_schedule(sched_id: str) -> dict | None:
-    """Get a schedule by ID."""
+    """Get a schedule by ID, including its assigned group IDs."""
     async with get_db() as db:
-        async with db.execute("SELECT * FROM schedules WHERE id = ?", (sched_id,)) as cursor:
+        query = """
+            SELECT s.*, GROUP_CONCAT(m.group_id) as group_ids
+            FROM schedules s
+            LEFT JOIN schedule_group_memberships m ON s.id = m.schedule_id
+            WHERE s.id = ?
+            GROUP BY s.id
+        """
+        async with db.execute(query, (sched_id,)) as cursor:
             row = await cursor.fetchone()
             if row:
                 d = dict(row)
+                d['group_ids'] = d['group_ids'].split(',') if d.get('group_ids') else []
+                d.pop('group_id', None)
                 if d.get('filters'):
                     try:
                         d['filters'] = json.loads(d['filters'])
@@ -463,13 +525,24 @@ async def get_schedule(sched_id: str) -> dict | None:
             return None
 
 async def list_schedules() -> list[dict]:
-    """List all schedules."""
+    """List all schedules, including their assigned group IDs."""
     async with get_db() as db:
-        async with db.execute("SELECT * FROM schedules ORDER BY created_at DESC") as cursor:
+        query = """
+            SELECT s.*, GROUP_CONCAT(m.group_id) as group_ids
+            FROM schedules s
+            LEFT JOIN schedule_group_memberships m ON s.id = m.schedule_id
+            GROUP BY s.id
+            ORDER BY s.created_at DESC
+        """
+        async with db.execute(query) as cursor:
             rows = await cursor.fetchall()
             schedules = []
             for r in rows:
                 d = dict(r)
+                # Parse group_ids from comma-separated string to list
+                d['group_ids'] = d['group_ids'].split(',') if d.get('group_ids') else []
+                # Remove legacy group_id so frontend stops using it
+                d.pop('group_id', None)
                 if d.get('filters'):
                     try:
                         d['filters'] = json.loads(d['filters'])
@@ -481,6 +554,7 @@ async def list_schedules() -> list[dict]:
 async def delete_schedule(sched_id: str) -> None:
     """Delete a schedule."""
     async with get_db() as db:
+        await db.execute("DELETE FROM schedule_group_memberships WHERE schedule_id = ?", (sched_id,))
         await db.execute("DELETE FROM schedules WHERE id = ?", (sched_id,))
         await db.commit()
 
@@ -563,3 +637,114 @@ async def get_db_stats() -> dict:
         stats["db_size_bytes"] = DB_PATH.stat().st_size
         
     return stats
+
+# ── Schedule Groups ──────────────────────────────────────────────────────────
+
+async def insert_group(group_dict: dict) -> str:
+    """Insert a new schedule group."""
+    group_id = str(uuid.uuid4())
+    group_dict['id'] = group_id
+    group_dict['created_at'] = datetime.utcnow().isoformat()
+    group_dict.setdefault('current_index', 0)
+    group_dict.setdefault('active', 1)
+    group_dict.setdefault('loop_mode', 'loop')
+
+    keys = list(group_dict.keys())
+    values = tuple(group_dict[k] for k in keys)
+    placeholders = ', '.join(['?'] * len(keys))
+    cols = ', '.join(keys)
+    async with get_db() as db:
+        await db.execute(f"INSERT INTO schedule_groups ({cols}) VALUES ({placeholders})", values)
+        await db.commit()
+    return group_id
+
+async def get_group(group_id: str) -> dict | None:
+    """Get a schedule group by ID."""
+    async with get_db() as db:
+        async with db.execute("SELECT * FROM schedule_groups WHERE id = ?", (group_id,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+async def list_groups() -> list[dict]:
+    """List all schedule groups."""
+    async with get_db() as db:
+        async with db.execute("SELECT * FROM schedule_groups ORDER BY created_at DESC") as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+async def update_group(group_id: str, updates: dict) -> None:
+    """Update a schedule group."""
+    if not updates:
+        return
+    set_clauses = [f"{k} = ?" for k in updates]
+    values = list(updates.values()) + [group_id]
+    async with get_db() as db:
+        await db.execute(f"UPDATE schedule_groups SET {', '.join(set_clauses)} WHERE id = ?", values)
+        await db.commit()
+
+async def delete_group(group_id: str) -> None:
+    """Delete a group and unlink all its schedules."""
+    async with get_db() as db:
+        await db.execute("DELETE FROM schedule_group_memberships WHERE group_id = ?", (group_id,))
+        await db.execute("DELETE FROM schedule_groups WHERE id = ?", (group_id,))
+        await db.commit()
+
+async def get_group_schedules(group_id: str) -> list[dict]:
+    """Get all schedules belonging to a group, ordered by order_index."""
+    async with get_db() as db:
+        query = """
+            SELECT s.*, m.order_index 
+            FROM schedules s 
+            JOIN schedule_group_memberships m ON s.id = m.schedule_id 
+            WHERE m.group_id = ? 
+            ORDER BY m.order_index ASC, s.created_at ASC
+        """
+        async with db.execute(query, (group_id,)) as cursor:
+            rows = await cursor.fetchall()
+            result = []
+            for r in rows:
+                d = dict(r)
+                if d.get('filters'):
+                    try:
+                        d['filters'] = json.loads(d['filters'])
+                    except:
+                        pass
+                result.append(d)
+            return result
+
+async def bulk_assign_to_group(group_id: str, schedule_ids: list[str]) -> None:
+    """Assign a list of schedules to a group, preserving existing members at the end."""
+    async with get_db() as db:
+        # Get current max order_index in the group
+        async with db.execute(
+            "SELECT COALESCE(MAX(order_index), -1) FROM schedule_group_memberships WHERE group_id = ?",
+            (group_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            base_index = (row[0] if row else -1) + 1
+
+        for i, sched_id in enumerate(schedule_ids):
+            await db.execute(
+                "INSERT OR IGNORE INTO schedule_group_memberships (group_id, schedule_id, order_index) VALUES (?, ?, ?)",
+                (group_id, sched_id, base_index + i)
+            )
+        await db.commit()
+
+async def remove_from_group(group_id: str, schedule_id: str) -> None:
+    """Remove a schedule from a group."""
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM schedule_group_memberships WHERE group_id = ? AND schedule_id = ?",
+            (group_id, schedule_id)
+        )
+        await db.commit()
+
+async def reorder_group_schedules(group_id: str, ordered_ids: list[str]) -> None:
+    """Update order_index for schedules in a group based on the given ordered list."""
+    async with get_db() as db:
+        for i, sched_id in enumerate(ordered_ids):
+            await db.execute(
+                "UPDATE schedule_group_memberships SET order_index = ? WHERE group_id = ? AND schedule_id = ?",
+                (i, group_id, sched_id)
+            )
+        await db.commit()

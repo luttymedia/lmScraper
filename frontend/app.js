@@ -25,7 +25,11 @@ const ICONS = {
   calendar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>`,
   copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
   external: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>`,
-  cookie: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"></path><path d="M8.5 8.5v.01"></path><path d="M7.5 15.5v.01"></path><path d="M12 12v.01"></path><path d="M11 17v.01"></path><path d="M16 14v.01"></path></svg>`
+  cookie: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"></path><path d="M8.5 8.5v.01"></path><path d="M7.5 15.5v.01"></path><path d="M12 12v.01"></path><path d="M11 17v.01"></path><path d="M16 14v.01"></path></svg>`,
+  list: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>`,
+  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+  refreshCw: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`,
+  layers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`
 };
 
 function escapeHtml(str) {
@@ -150,7 +154,7 @@ function setupNavigation() {
 
       if (targetId === 'section-job-history') loadJobHistory();
       if (targetId === 'section-results') { loadJobHistory(); loadResults(); }
-      if (targetId === 'section-scheduler') loadSchedules();
+      if (targetId === 'section-scheduler') { loadSchedules(); loadGroups(); }
       if (targetId === 'section-sessions') loadSessions();
 
       if (window.innerWidth <= 768) sidebar.classList.remove('open');
@@ -1806,12 +1810,13 @@ async function loadSchedules() {
     tbody.innerHTML = '';
     
     if(schedules.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" class="empty-state"><div class="empty-state-icon">${ICONS.calendar}</div><p>No schedules found</p></td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty-state"><div class="empty-state-icon">${ICONS.calendar}</div><p>No schedules found</p></td></tr>`;
       return;
     }
     
     schedules.forEach(item => {
       const tr = document.createElement('tr');
+      tr.dataset.schedId = item.id;
       const status = item.computed_status || (item.active ? 'active' : (item.last_run_at && !item.next_run_at ? 'completed' : 'disabled'));
       
       let badgeClass = 'badge-pending';
@@ -1829,19 +1834,24 @@ async function loadSchedules() {
       const isActive = (item.active === 1 || item.active === true);
       const toggleTitle = isActive ? 'Disable Schedule' : 'Enable Schedule';
       const toggleIcon = isActive ? ICONS.pause : ICONS.play;
-      const toggleBtnClass = isActive ? 'btn-secondary' : 'btn-secondary';
       const toggleStyle = isActive ? 'color: var(--warning);' : 'color: var(--success);';
 
+      const groupBadge = (item.group_ids && item.group_ids.length > 0)
+        ? `<span class="badge badge-active" style="font-size:0.72rem;" title="Assigned to ${item.group_ids.length} group(s)">${ICONS.layers} ${item.group_ids.length} Group${item.group_ids.length > 1 ? 's' : ''}</span>`
+        : `<span style="color:var(--text-muted); font-size:0.8rem;">—</span>`;
+
       tr.innerHTML = `
+        <td><input type="checkbox" class="sched-row-checkbox" data-id="${item.id}" title="Select"></td>
         <td><strong>${item.label || '—'}</strong></td>
         <td><a href="${item.url}" target="_blank" style="color:inherit">${truncate(item.url, 30)}</a></td>
         <td><code style="background:var(--surface-elevated); padding:2px 6px; border-radius:4px" title="${humanizeCron(item.cron_expression)}">${item.cron_expression}</code></td>
         <td>${formatDate(item.next_run_at || item.next_run)}</td>
         <td>${formatDate(item.last_run_at || item.last_run)}</td>
+        <td>${groupBadge}</td>
         <td><span class="badge ${badgeClass}">${statusText}</span></td>
         <td>
           <div style="display:inline-flex; gap:6px; align-items:center;">
-            <button class="btn ${toggleBtnClass} btn-sm" onclick="toggleSchedule('${item.id}', ${item.active})" title="${toggleTitle}" style="${toggleStyle}">${toggleIcon}</button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleSchedule('${item.id}', ${item.active})" title="${toggleTitle}" style="${toggleStyle}">${toggleIcon}</button>
             <button class="btn btn-secondary btn-sm" onclick="editSchedule('${item.id}')" title="Edit Schedule">${ICONS.edit}</button>
             <button class="btn btn-danger btn-sm" onclick="deleteSchedule('${item.id}')" title="Delete">${ICONS.trash}</button>
           </div>
@@ -1849,8 +1859,67 @@ async function loadSchedules() {
       `;
       tbody.appendChild(tr);
     });
+
+    // Update bulk-assign group dropdown
+    _updateBulkAssignDropdown();
+    // Hook checkboxes
+    _hookScheduleCheckboxes();
   } catch(e) {
     console.error('Failed to load schedules', e);
+  }
+}
+
+function _updateBulkAssignDropdown() {
+  const sel = document.getElementById('bulk-assign-group-select');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Assign selected to group…</option>';
+  (_groupsCache || []).forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g.id;
+    opt.textContent = g.name;
+    sel.appendChild(opt);
+  });
+  sel.value = current;
+}
+
+function _hookScheduleCheckboxes() {
+  const allChk = document.getElementById('sched-select-all');
+  const rowChks = document.querySelectorAll('.sched-row-checkbox');
+
+  rowChks.forEach(chk => {
+    chk.addEventListener('change', _updateBulkUi);
+  });
+
+  if (allChk) {
+    allChk.onclick = () => {
+      const liveRowChks = document.querySelectorAll('.sched-row-checkbox');
+      liveRowChks.forEach(c => c.checked = allChk.checked);
+      _updateBulkUi();
+    };
+  }
+  _updateBulkUi();
+}
+
+function _updateBulkUi() {
+  const allChk = document.getElementById('sched-select-all');
+  const rowChks = document.querySelectorAll('.sched-row-checkbox');
+  const countEl = document.getElementById('sched-selected-count');
+  const bulkSel = document.getElementById('bulk-assign-group-select');
+  const bulkBtn = document.getElementById('btn-bulk-assign-confirm');
+
+  const checked = document.querySelectorAll('.sched-row-checkbox:checked');
+  const n = checked.length;
+  if (countEl) countEl.textContent = n > 0 ? `${n} selected` : '';
+  if (bulkSel) bulkSel.style.display = n > 0 ? '' : 'none';
+  if (bulkBtn) bulkBtn.classList.toggle('hidden', n === 0);
+  if (allChk) {
+    allChk.indeterminate = n > 0 && n < rowChks.length;
+    if (n === rowChks.length && rowChks.length > 0) {
+      allChk.checked = true;
+    } else if (n === 0) {
+      allChk.checked = false;
+    }
   }
 }
 
@@ -1871,6 +1940,420 @@ window.deleteSchedule = async (id) => {
     loadSchedules();
   }
 };
+
+// ── Schedule Groups ───────────────────────────────────────────────────────────
+
+let _groupsCache = [];
+let _editingGroupId = null;
+
+async function loadGroups() {
+  try {
+    const res = await api('/api/schedule-groups');
+    _groupsCache = res.groups || [];
+    renderGroups(_groupsCache);
+    _updateBulkAssignDropdown();
+  } catch(e) {
+    console.error('Failed to load groups', e);
+  }
+}
+
+function _groupIntervalLabel(g) {
+  const mins = g.interval_minutes || 5;
+  if (mins >= 60 && mins % 60 === 0) return `every ${mins / 60}h`;
+  return `every ${mins}m`;
+}
+
+function renderGroups(groups) {
+  const container = document.getElementById('groups-list');
+  if (!container) return;
+  if (!groups || groups.length === 0) {
+    container.innerHTML = `<div class="empty-state" style="padding:24px 0; font-size:0.875rem; color:var(--text-muted);"><div class="empty-state-icon"><i data-lucide="layers" style="width:32px;height:32px;"></i></div><p>No schedule groups yet. Click "New Group" to create one.</p></div>`;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  container.innerHTML = '';
+  groups.forEach(g => {
+    const card = document.createElement('div');
+    card.style.cssText = 'border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:10px; background:var(--surface-elevated); display:flex; flex-direction:column; gap:10px;';
+
+    const total = g.total_schedules || 0;
+    const idx = g.current_index || 0;
+    const displayIdx = total > 0 ? (idx % total) + 1 : 0;
+    const loopLabel = g.loop_mode === 'once' ? 'One-time' : 'Loops';
+    const intervalLabel = _groupIntervalLabel(g);
+
+    let statusClass = 'badge-disabled';
+    let statusText = g.status?.toUpperCase() || 'PAUSED';
+    if (g.status === 'active') statusClass = 'badge-running';
+    else if (g.status === 'completed') statusClass = 'badge-done';
+
+    card.innerHTML = `
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <strong style="font-size:0.95rem;">${g.name}</strong>
+            <span class="badge ${statusClass}">${statusText}</span>
+            <span class="badge badge-pending" style="font-size:0.72rem;">${loopLabel}</span>
+            <span class="badge badge-pending" style="font-size:0.72rem;">${intervalLabel}</span>
+          </div>
+          <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
+            ${total} schedule${total !== 1 ? 's' : ''}
+            ${total > 0 ? `· Step <strong>${displayIdx}</strong>/${total}` : ''}
+            ${g.current_schedule_label ? `· Next: <em>${g.current_schedule_label}</em>` : ''}
+          </div>
+          ${g.last_triggered_at ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Last fired: ${formatDate(g.last_triggered_at)}</div>` : ''}
+          ${g.start_time ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Scheduled start: ${formatDate(g.start_time)}</div>` : ''}
+        </div>
+        <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+          ${g.status === 'active'
+            ? `<button class="btn btn-secondary btn-sm" onclick="pauseGroup('${g.id}')" title="Pause group" style="color:var(--warning);">${ICONS.pause}</button>`
+            : `<button class="btn btn-secondary btn-sm" onclick="resumeGroup('${g.id}')" title="Start / Resume group" style="color:var(--success);">${ICONS.play}</button>`
+          }
+          <button class="btn btn-secondary btn-sm" onclick="openGroupMembersModal('${g.id}')" title="View & Reorder members" style="color:var(--primary-light);">${ICONS.list}</button>
+          <button class="btn btn-secondary btn-sm" onclick="openAssignModal('${g.id}', '${g.name.replace(/'/g,"\\\'")}')" title="Assign schedules">${ICONS.plus}</button>
+          <button class="btn btn-secondary btn-sm" onclick="resetGroup('${g.id}')" title="Reset progress to step 1">${ICONS.refreshCw}</button>
+          <button class="btn btn-secondary btn-sm" onclick="editGroup('${g.id}')" title="Edit group">${ICONS.edit}</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteGroup('${g.id}')" title="Delete group">${ICONS.trash}</button>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
+// Group create / edit form
+document.getElementById('btn-open-create-group')?.addEventListener('click', () => {
+  _editingGroupId = null;
+  resetGroupForm();
+  document.getElementById('group-form-wrapper')?.classList.remove('hidden');
+  document.getElementById('group-name')?.focus();
+});
+
+document.getElementById('btn-cancel-group')?.addEventListener('click', () => {
+  document.getElementById('group-form-wrapper')?.classList.add('hidden');
+  resetGroupForm();
+});
+
+function resetGroupForm() {
+  _editingGroupId = null;
+  const nameEl = document.getElementById('group-name');
+  if (nameEl) nameEl.value = '';
+  const valEl = document.getElementById('group-interval-value');
+  if (valEl) valEl.value = 5;
+  const unitEl = document.getElementById('group-interval-unit');
+  if (unitEl) unitEl.value = 'mins';
+  const modeEl = document.getElementById('group-loop-mode');
+  if (modeEl) modeEl.value = 'loop';
+  const startEl = document.getElementById('group-start-time');
+  if (startEl) startEl.value = '';
+  const saveBtn = document.getElementById('btn-save-group');
+  if (saveBtn) saveBtn.textContent = 'Create Group';
+  const badge = document.getElementById('group-edit-badge');
+  if (badge) badge.classList.add('hidden');
+}
+
+window.editGroup = async (groupId) => {
+  const g = _groupsCache.find(x => x.id === groupId);
+  if (!g) return;
+  _editingGroupId = groupId;
+  const nameEl = document.getElementById('group-name');
+  if (nameEl) nameEl.value = g.name;
+  const mins = g.interval_minutes || 5;
+  const valEl = document.getElementById('group-interval-value');
+  const unitEl = document.getElementById('group-interval-unit');
+  if (mins >= 60 && mins % 60 === 0) {
+    if (valEl) valEl.value = mins / 60;
+    if (unitEl) unitEl.value = 'hours';
+  } else {
+    if (valEl) valEl.value = mins;
+    if (unitEl) unitEl.value = 'mins';
+  }
+  const modeEl = document.getElementById('group-loop-mode');
+  if (modeEl) modeEl.value = g.loop_mode || 'loop';
+  const startEl = document.getElementById('group-start-time');
+  if (startEl) startEl.value = g.start_time ? g.start_time.slice(0, 16) : '';
+  const saveBtn = document.getElementById('btn-save-group');
+  if (saveBtn) saveBtn.textContent = 'Update Group';
+  const badge = document.getElementById('group-edit-badge');
+  if (badge) { badge.textContent = `Editing: ${g.name}`; badge.classList.remove('hidden'); }
+  document.getElementById('group-form-wrapper')?.classList.remove('hidden');
+  document.getElementById('group-name')?.focus();
+};
+
+document.getElementById('btn-save-group')?.addEventListener('click', async () => {
+  const name = document.getElementById('group-name')?.value?.trim();
+  if (!name) return showToast('Group name is required', 'error');
+  const val = parseInt(document.getElementById('group-interval-value')?.value || '5', 10);
+  const unit = document.getElementById('group-interval-unit')?.value || 'mins';
+  const intervalMins = unit === 'hours' ? val * 60 : val;
+  if (!intervalMins || intervalMins < 1) return showToast('Interval must be at least 1 minute', 'error');
+  const loopMode = document.getElementById('group-loop-mode')?.value || 'loop';
+  const startTime = document.getElementById('group-start-time')?.value || null;
+  const payload = { name, interval_minutes: intervalMins, loop_mode: loopMode, start_time: startTime };
+
+  try {
+    if (_editingGroupId) {
+      await api(`/api/schedule-groups/${_editingGroupId}`, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('Group updated', 'success');
+    } else {
+      await api('/api/schedule-groups', { method: 'POST', body: JSON.stringify(payload) });
+      showToast('Group created', 'success');
+    }
+    document.getElementById('group-form-wrapper')?.classList.add('hidden');
+    resetGroupForm();
+    loadGroups();
+  } catch(e) {
+    showToast('Failed to save group: ' + e.message, 'error');
+  }
+});
+
+window.deleteGroup = async (groupId) => {
+  if (await confirmAction('Delete this group? Schedules inside will be unlinked (not deleted).')) {
+    await api(`/api/schedule-groups/${groupId}`, { method: 'DELETE' });
+    showToast('Group deleted', 'success');
+    loadGroups();
+    loadSchedules();
+  }
+};
+
+window.pauseGroup = async (groupId) => {
+  await api(`/api/schedule-groups/${groupId}/pause`, { method: 'POST' });
+  showToast('Group paused', 'success');
+  loadGroups();
+};
+
+window.resumeGroup = async (groupId) => {
+  await api(`/api/schedule-groups/${groupId}/resume`, { method: 'POST' });
+  showToast('Group started', 'success');
+  loadGroups();
+};
+
+window.resetGroup = async (groupId) => {
+  if (await confirmAction('Reset this group to step 1?')) {
+    await api(`/api/schedule-groups/${groupId}/reset`, { method: 'POST' });
+    showToast('Group reset to step 1', 'success');
+    loadGroups();
+  }
+};
+
+// Bulk-assign from individual schedule checkboxes
+document.getElementById('btn-bulk-assign-confirm')?.addEventListener('click', async () => {
+  const groupId = document.getElementById('bulk-assign-group-select')?.value;
+  if (!groupId) return showToast('Please select a group', 'error');
+  const checked = Array.from(document.querySelectorAll('.sched-row-checkbox:checked')).map(c => c.dataset.id);
+  if (checked.length === 0) return showToast('No schedules selected', 'error');
+  try {
+    await api(`/api/schedule-groups/${groupId}/bulk-assign`, {
+      method: 'POST',
+      body: JSON.stringify({ schedule_ids: checked })
+    });
+    showToast(`${checked.length} schedule${checked.length > 1 ? 's' : ''} assigned to group`, 'success');
+    // Deselect all
+    document.querySelectorAll('.sched-row-checkbox').forEach(c => c.checked = false);
+    const allChk = document.getElementById('sched-select-all');
+    if (allChk) allChk.checked = false;
+    document.getElementById('sched-selected-count').textContent = '';
+    document.getElementById('bulk-assign-group-select').style.display = 'none';
+    document.getElementById('btn-bulk-assign-confirm')?.classList.add('hidden');
+    loadGroups();
+    loadSchedules();
+  } catch(e) {
+    showToast('Failed to assign: ' + e.message, 'error');
+  }
+});
+
+// ── Assign-to-group modal ────────────────────────────────────────────────────
+
+let _assignGroupId = null;
+let _allSchedulesForAssign = [];
+
+window.openAssignModal = async (groupId, groupName) => {
+  _assignGroupId = groupId;
+  document.getElementById('assign-group-name-label').textContent = groupName;
+  // Fetch fresh schedules
+  try {
+    const res = await api('/api/schedule');
+    _allSchedulesForAssign = (Array.isArray(res) ? res : (res.schedules || [])).filter(s => !(s.group_ids && s.group_ids.includes(_assignGroupId)));
+  } catch(e) {
+    _allSchedulesForAssign = [];
+  }
+  _renderAssignList('');
+  document.getElementById('assign-search').value = '';
+  openModal('modal-assign-group');
+};
+
+document.getElementById('assign-search')?.addEventListener('input', (e) => {
+  _renderAssignList(e.target.value.toLowerCase());
+});
+
+function _renderAssignList(query) {
+  const container = document.getElementById('assign-schedule-list');
+  if (!container) return;
+  const filtered = _allSchedulesForAssign.filter(s => {
+    const label = (s.label || s.url || '').toLowerCase();
+    return !query || label.includes(query);
+  });
+  if (filtered.length === 0) {
+    container.innerHTML = '<div style="padding:12px; color:var(--text-muted); font-size:0.85rem; text-align:center;">No available schedules found</div>';
+    return;
+  }
+  container.innerHTML = filtered.map(s => `
+    <label style="display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:6px; cursor:pointer; transition:background 0.15s;" class="multiselect-option">
+      <input type="checkbox" class="assign-sched-chk" value="${s.id}">
+      <span style="flex:1; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.label || s.url}</span>
+      ${s.cron_expression ? `<code style="font-size:0.72rem; background:var(--surface); padding:2px 5px; border-radius:4px; flex-shrink:0;">${s.cron_expression}</code>` : ''}
+    </label>
+  `).join('');
+}
+
+document.getElementById('btn-confirm-assign')?.addEventListener('click', async () => {
+  const checked = Array.from(document.querySelectorAll('.assign-sched-chk:checked')).map(c => c.value);
+  if (checked.length === 0) return showToast('No schedules selected', 'error');
+  try {
+    await api(`/api/schedule-groups/${_assignGroupId}/bulk-assign`, {
+      method: 'POST',
+      body: JSON.stringify({ schedule_ids: checked })
+    });
+    showToast(`${checked.length} schedule${checked.length > 1 ? 's' : ''} assigned`, 'success');
+    closeModal('modal-assign-group');
+    loadGroups();
+    loadSchedules();
+  } catch(e) {
+    showToast('Failed: ' + e.message, 'error');
+  }
+});
+
+document.getElementById('btn-close-assign-modal')?.addEventListener('click', () => closeModal('modal-assign-group'));
+document.getElementById('btn-cancel-assign-modal')?.addEventListener('click', () => closeModal('modal-assign-group'));
+
+// ── Group Members / Reorder Modal ────────────────────────────────────────────
+
+let _membersGroupId = null;
+let _memberDragSrcEl = null;
+
+window.openGroupMembersModal = async (groupId) => {
+  _membersGroupId = groupId;
+  try {
+    const g = await api(`/api/schedule-groups/${groupId}`);
+    document.getElementById('group-members-title').textContent = `Members: ${g.name}`;
+    _renderMembersList(g.schedules || [], groupId);
+    openModal('modal-group-members');
+  } catch(e) {
+    showToast('Failed to load group members', 'error');
+  }
+};
+
+function _renderMembersList(schedules, groupId) {
+  const container = document.getElementById('group-members-list');
+  if (!container) return;
+  if (schedules.length === 0) {
+    container.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-muted); font-size:0.85rem;">No schedules in this group yet. Use "Assign Schedules" to add some.</div>';
+    return;
+  }
+  container.innerHTML = '';
+  schedules.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.draggable = true;
+    row.dataset.schedId = s.id;
+    row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--border); cursor:grab; background:var(--surface-elevated); transition:background 0.15s; user-select:none;';
+    row.innerHTML = `
+      <span style="color:var(--text-muted); font-size:0.8rem; cursor:grab;">⠿</span>
+      <span style="flex:1; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${i + 1}. ${s.label || s.url}</span>
+      ${s.cron_expression ? `<code style="font-size:0.72rem; background:var(--surface); padding:2px 5px; border-radius:4px; flex-shrink:0; color:var(--text-muted);">${s.cron_expression}</code>` : ''}
+      <button class="icon-btn" onclick="removeFromGroupUI('${groupId}','${s.id}', this)" title="Remove from group" style="color:var(--error);">
+        <i data-lucide="x-circle" style="width:14px;height:14px;"></i>
+      </button>
+    `;
+
+    // HTML5 drag-and-drop
+    row.addEventListener('dragstart', (e) => {
+      _memberDragSrcEl = row;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', s.id);
+      row.style.opacity = '0.4';
+    });
+    row.addEventListener('dragend', () => {
+      row.style.opacity = '';
+      container.querySelectorAll('[data-drag-over]').forEach(el => {
+        el.removeAttribute('data-drag-over');
+        el.style.background = '';
+      });
+    });
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (row !== _memberDragSrcEl) {
+        row.style.background = 'var(--primary-dim, rgba(99,102,241,0.15))';
+        row.setAttribute('data-drag-over', '1');
+      }
+    });
+    row.addEventListener('dragleave', () => {
+      row.style.background = '';
+      row.removeAttribute('data-drag-over');
+    });
+    row.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      row.style.background = '';
+      row.removeAttribute('data-drag-over');
+      if (_memberDragSrcEl && _memberDragSrcEl !== row) {
+        // Reorder in DOM
+        const parent = container;
+        const rows = Array.from(parent.children);
+        const srcIdx = rows.indexOf(_memberDragSrcEl);
+        const tgtIdx = rows.indexOf(row);
+        if (srcIdx < tgtIdx) {
+          parent.insertBefore(_memberDragSrcEl, row.nextSibling);
+        } else {
+          parent.insertBefore(_memberDragSrcEl, row);
+        }
+        // Renumber labels
+        Array.from(parent.children).forEach((r, idx) => {
+          const span = r.querySelector('span:nth-child(2)');
+          if (span) {
+            const text = span.textContent.replace(/^\d+\. /, '');
+            span.textContent = `${idx + 1}. ${text}`;
+          }
+        });
+        // Persist order to backend
+        const orderedIds = Array.from(parent.children).map(r => r.dataset.schedId).filter(Boolean);
+        try {
+          await api(`/api/schedule-groups/${_membersGroupId}/reorder`, {
+            method: 'POST',
+            body: JSON.stringify({ ordered_ids: orderedIds })
+          });
+          showToast('Order saved', 'success');
+          loadGroups();
+        } catch(err) {
+          showToast('Failed to save order', 'error');
+        }
+      }
+    });
+
+    container.appendChild(row);
+  });
+  if (window.lucide) lucide.createIcons();
+}
+
+window.removeFromGroupUI = async (groupId, schedId, btn) => {
+  try {
+    await api(`/api/schedule-groups/${groupId}/remove-schedule`, {
+      method: 'POST',
+      body: JSON.stringify({ schedule_id: schedId })
+    });
+    // Remove the row from the DOM
+    btn.closest('[data-sched-id]')?.remove();
+    showToast('Removed from group', 'success');
+    loadGroups();
+    loadSchedules();
+  } catch(e) {
+    showToast('Failed to remove: ' + e.message, 'error');
+  }
+};
+
+document.getElementById('btn-close-members-modal')?.addEventListener('click', () => closeModal('modal-group-members'));
+document.getElementById('btn-close-members-ok')?.addEventListener('click', () => closeModal('modal-group-members'));
 
 // ── Saved Sessions ───────────────────────────────────────────────────────────
 
@@ -2153,7 +2636,7 @@ async function pollLiveState() {
               showToast(`${title} failed`, 'error');
             }
           }
-          if (activeSectionId === 'section-scheduler') loadSchedules();
+          if (activeSectionId === 'section-scheduler') { loadSchedules(); loadGroups(); }
           if (activeSectionId === 'section-results') loadResults();
         }
       }
@@ -2164,6 +2647,7 @@ async function pollLiveState() {
         loadJobHistory();
       } else if (activeSectionId === 'section-scheduler') {
         loadSchedules();
+        loadGroups();
       }
     }
   } catch (e) {
@@ -2212,6 +2696,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadJobHistory(),
     loadResults(),
     loadSchedules(),
+    loadGroups(),
     pollLiveState()
   ]);
   

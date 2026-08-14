@@ -18,7 +18,8 @@ from backend.storage.db import (
     init_db, list_jobs, get_job, delete_job, insert_job,
     query_events, delete_events as db_delete_events,
     list_schedules, get_schedule, insert_session, list_sessions,
-    delete_session, get_session_for_domain
+    delete_session, get_session_for_domain,
+    list_groups, get_group, get_group_schedules
 )
 from backend.storage.exporter import export_to_csv, export_to_xlsx
 from backend.storage.monitor import (
@@ -34,7 +35,10 @@ from backend.jobs.manager import (
 from backend.jobs.scheduler import (
     start_scheduler, shutdown_scheduler, create_schedule,
     pause_schedule_job, resume_schedule_job, delete_schedule_job,
-    update_schedule_job
+    update_schedule_job,
+    create_group_schedule, update_group_schedule, delete_group_schedule,
+    pause_group_schedule, resume_group_schedule, reset_group_schedule,
+    bulk_assign_to_group, remove_from_group, reorder_group_schedules
 )
 from backend.scraper.engine import ScraperConfig
 from backend.version import VERSION, RELEASE_DATE, CHANGELOG
@@ -299,6 +303,124 @@ async def resume_schedule_route(id: str):
 async def delete_schedule_route(id: str):
     await delete_schedule_job(id)
     return {"deleted": True}
+
+# API Routes - Schedule Groups
+@app.post("/api/schedule-groups")
+async def create_group_route(body: dict = Body(...)):
+    """Create a new schedule group."""
+    if not body.get('name'):
+        raise HTTPException(400, "Group name is required")
+    interval = int(body.get('interval_minutes', 5))
+    if interval < 1:
+        raise HTTPException(400, "interval_minutes must be >= 1")
+    group_dict = {
+        'name': body['name'],
+        'interval_minutes': interval,
+        'loop_mode': body.get('loop_mode', 'loop'),
+        'start_time': body.get('start_time'),
+        'active': 0  # created paused by default if no start_time (handled by create_group_schedule)
+    }
+    group_id = await create_group_schedule(group_dict)
+    return await get_group(group_id)
+
+@app.get("/api/schedule-groups")
+async def list_groups_route():
+    """List all schedule groups with enriched info."""
+    groups = await list_groups()
+    enriched = []
+    for g in groups:
+        schedules = await get_group_schedules(g['id'])
+        total = len(schedules)
+        current_idx = g.get('current_index', 0)
+        is_active = bool(g.get('active'))
+        completed = bool(g.get('completed_at'))
+        if is_active:
+            status = 'active'
+        elif completed:
+            status = 'completed'
+        else:
+            status = 'paused'
+        enriched.append({
+            **g,
+            'total_schedules': total,
+            'current_schedule_label': schedules[current_idx % total]['label'] if total > 0 else None,
+            'status': status
+        })
+    return {"groups": enriched}
+
+@app.get("/api/schedule-groups/{id}")
+async def get_group_route(id: str):
+    """Get a single schedule group."""
+    group = await get_group(id)
+    if not group:
+        raise HTTPException(404, "Group not found")
+    schedules = await get_group_schedules(id)
+    return {**group, 'schedules': schedules, 'total_schedules': len(schedules)}
+
+@app.put("/api/schedule-groups/{id}")
+async def update_group_route(id: str, body: dict = Body(...)):
+    """Update a schedule group."""
+    group = await get_group(id)
+    if not group:
+        raise HTTPException(404, "Group not found")
+    allowed = {'name', 'interval_minutes', 'loop_mode', 'start_time'}
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if 'interval_minutes' in updates:
+        updates['interval_minutes'] = int(updates['interval_minutes'])
+    await update_group_schedule(id, updates)
+    return await get_group(id)
+
+@app.delete("/api/schedule-groups/{id}")
+async def delete_group_route(id: str):
+    """Delete a schedule group (schedules are unlinked, not deleted)."""
+    await delete_group_schedule(id)
+    return {"deleted": True}
+
+@app.post("/api/schedule-groups/{id}/pause")
+async def pause_group_route(id: str):
+    await pause_group_schedule(id)
+    return {"status": "paused"}
+
+@app.post("/api/schedule-groups/{id}/resume")
+async def resume_group_route(id: str):
+    await resume_group_schedule(id)
+    return {"status": "active"}
+
+@app.post("/api/schedule-groups/{id}/reset")
+async def reset_group_route(id: str):
+    """Reset the group's current_index to 0."""
+    await reset_group_schedule(id)
+    return {"status": "reset"}
+
+@app.post("/api/schedule-groups/{id}/bulk-assign")
+async def bulk_assign_route(id: str, body: dict = Body(...)):
+    """Assign a list of schedule IDs to this group."""
+    group = await get_group(id)
+    if not group:
+        raise HTTPException(404, "Group not found")
+    schedule_ids = body.get('schedule_ids', [])
+    if not isinstance(schedule_ids, list):
+        raise HTTPException(400, "schedule_ids must be a list")
+    await bulk_assign_to_group(id, schedule_ids)
+    return {"assigned": len(schedule_ids)}
+
+@app.post("/api/schedule-groups/{id}/remove-schedule")
+async def remove_from_group_route(id: str, body: dict = Body(...)):
+    """Remove a single schedule from the group."""
+    sched_id = body.get('schedule_id')
+    if not sched_id:
+        raise HTTPException(400, "schedule_id is required")
+    await remove_from_group(id, sched_id)
+    return {"removed": True}
+
+@app.post("/api/schedule-groups/{id}/reorder")
+async def reorder_group_route(id: str, body: dict = Body(...)):
+    """Reorder schedules in a group. Body: {ordered_ids: [...]}."""
+    ordered_ids = body.get('ordered_ids', [])
+    if not isinstance(ordered_ids, list):
+        raise HTTPException(400, "ordered_ids must be a list")
+    await reorder_group_schedules(id, ordered_ids)
+    return {"reordered": True}
 
 # API Routes - Sessions
 @app.get("/api/sessions")

@@ -88,7 +88,24 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+function parseUtcDate(isoStr) {
+  if (!isoStr) return null;
+  let str = String(isoStr).trim();
+  if (!str.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(str)) {
+    str += 'Z';
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? new Date(isoStr) : d;
+}
+
 function formatDate(isoStr) {
+  if (!isoStr) return '—';
+  const d = parseUtcDate(isoStr);
+  if (!d || isNaN(d.getTime())) return isoStr;
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatLocalDate(isoStr) {
   if (!isoStr) return '—';
   const d = new Date(isoStr);
   if (isNaN(d.getTime())) return isoStr;
@@ -1250,15 +1267,17 @@ function renderJobHistory() {
 
     let durationStr = 'N/A';
     if (job.started_at) {
-      const start = new Date(job.started_at).getTime();
-      const end = job.finished_at ? new Date(job.finished_at).getTime() : Date.now();
-      const diffSecs = Math.floor((end - start) / 1000);
-      if (diffSecs < 60) {
-        durationStr = `${diffSecs}s`;
-      } else {
-        const m = Math.floor(diffSecs / 60);
-        const s = diffSecs % 60;
-        durationStr = `${m}m ${s}s`;
+      const startDate = parseUtcDate(job.started_at);
+      const endDate = job.finished_at ? parseUtcDate(job.finished_at) : new Date();
+      if (startDate && endDate) {
+        const diffSecs = Math.max(0, Math.floor((endDate.getTime() - startDate.getTime()) / 1000));
+        if (diffSecs < 60) {
+          durationStr = `${diffSecs}s`;
+        } else {
+          const m = Math.floor(diffSecs / 60);
+          const s = diffSecs % 60;
+          durationStr = `${m}m ${s}s`;
+        }
       }
     }
 
@@ -2074,7 +2093,7 @@ function renderGroups(groups) {
             ${g.current_schedule_label ? `· Next: <em>${g.current_schedule_label}</em>` : ''}
           </div>
           ${g.last_triggered_at ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Last fired: ${formatDate(g.last_triggered_at)}</div>` : ''}
-          ${g.start_time ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Scheduled start: ${formatDate(g.start_time)}</div>` : ''}
+          ${g.start_time ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Scheduled start: ${formatLocalDate(g.start_time)}</div>` : ''}
         </div>
         <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
           ${g.status === 'active'
@@ -2426,6 +2445,38 @@ window.removeFromGroupUI = async (groupId, schedId, btn) => {
 document.getElementById('btn-close-members-modal')?.addEventListener('click', () => closeModal('modal-group-members'));
 document.getElementById('btn-close-members-ok')?.addEventListener('click', () => closeModal('modal-group-members'));
 
+document.getElementById('btn-reverse-members-order')?.addEventListener('click', async () => {
+  const container = document.getElementById('group-members-list');
+  if (!container || !_membersGroupId) return;
+  const rows = Array.from(container.children).filter(r => r.dataset.schedId);
+  if (rows.length < 2) return;
+
+  // Reverse DOM order
+  rows.reverse().forEach(row => container.appendChild(row));
+
+  // Renumber text labels
+  Array.from(container.children).forEach((r, idx) => {
+    const span = r.querySelector('span:nth-child(2)');
+    if (span) {
+      const text = span.textContent.replace(/^\d+\. /, '');
+      span.textContent = `${idx + 1}. ${text}`;
+    }
+  });
+
+  // Save new order to backend
+  const orderedIds = Array.from(container.children).map(r => r.dataset.schedId).filter(Boolean);
+  try {
+    await api(`/api/schedule-groups/${_membersGroupId}/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ ordered_ids: orderedIds })
+    });
+    showToast('Order reversed and saved', 'success');
+    loadGroups();
+  } catch(err) {
+    showToast('Failed to save order', 'error');
+  }
+});
+
 // ── Saved Sessions ───────────────────────────────────────────────────────────
 
 document.getElementById('btn-save-session').addEventListener('click', async () => {
@@ -2637,38 +2688,75 @@ if (btnCloseVersion) {
   });
 }
 
+let activeLogModalInterval = null;
+
+function closeLogModalInterval() {
+  if (activeLogModalInterval) {
+    clearInterval(activeLogModalInterval);
+    activeLogModalInterval = null;
+  }
+}
+
 window.viewJobLogs = async (jobId) => {
+  closeLogModalInterval();
+
   const body = document.getElementById('job-log-modal-body');
   if (!body) return;
 
   body.innerHTML = '<div style="color:var(--text-secondary); padding:10px;">Loading job logs...</div>';
   openModal('modal-job-log');
 
-  try {
-    const res = await api(`/api/jobs/${jobId}/logs`);
-    const logs = res.logs || [];
-    if (logs.length === 0) {
-      body.innerHTML = '<div style="color:var(--text-muted); font-style:italic; padding:10px;">No execution logs found for this job.</div>';
+  const fetchAndRenderLogs = async () => {
+    try {
+      const res = await api(`/api/jobs/${jobId}/logs`);
+      const logs = res.logs || [];
+      if (logs.length === 0) {
+        body.innerHTML = '<div style="color:var(--text-muted); font-style:italic; padding:10px;">No execution logs found for this job.</div>';
+        return;
+      }
+
+      // Check if user is scrolled near the bottom before updating
+      const isAtBottom = (body.scrollHeight - body.scrollTop - body.clientHeight) < 40;
+
+      body.innerHTML = '';
+      logs.forEach(log => {
+        const el = document.createElement('div');
+        const level = log.level || 'info';
+        el.className = `log-${level}`;
+        const timeStr = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+        el.textContent = timeStr ? `[${timeStr}] ${log.message}` : log.message;
+        body.appendChild(el);
+      });
+
+      if (isAtBottom) {
+        body.scrollTop = body.scrollHeight;
+      }
+    } catch (e) {
+      body.innerHTML = `<div class="log-error" style="padding:10px;">Failed to load logs: ${escapeHtml(e.message)}</div>`;
+    }
+  };
+
+  await fetchAndRenderLogs();
+
+  // Auto-refresh every 2 seconds as long as the modal remains open
+  activeLogModalInterval = setInterval(async () => {
+    const modal = document.getElementById('modal-job-log');
+    if (!modal || modal.classList.contains('hidden')) {
+      closeLogModalInterval();
       return;
     }
-
-    body.innerHTML = '';
-    logs.forEach(log => {
-      const el = document.createElement('div');
-      const level = log.level || 'info';
-      el.className = `log-${level}`;
-      const timeStr = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
-      el.textContent = timeStr ? `[${timeStr}] ${log.message}` : log.message;
-      body.appendChild(el);
-    });
-    body.scrollTop = body.scrollHeight;
-  } catch (e) {
-    body.innerHTML = `<div class="log-error" style="padding:10px;">Failed to load logs: ${escapeHtml(e.message)}</div>`;
-  }
+    await fetchAndRenderLogs();
+  }, 2000);
 };
 
-document.getElementById('btn-close-job-log-modal')?.addEventListener('click', () => closeModal('modal-job-log'));
-document.getElementById('btn-close-job-log-footer')?.addEventListener('click', () => closeModal('modal-job-log'));
+document.getElementById('btn-close-job-log-modal')?.addEventListener('click', () => {
+  closeLogModalInterval();
+  closeModal('modal-job-log');
+});
+document.getElementById('btn-close-job-log-footer')?.addEventListener('click', () => {
+  closeLogModalInterval();
+  closeModal('modal-job-log');
+});
 
 // ── Live Background Polling & Status Sync ─────────────────────────────────────
 

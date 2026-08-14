@@ -613,7 +613,10 @@
               <h3 id="group-members-title">Group Members</h3>
               <button class="icon-btn" id="btn-close-members-modal"><i data-lucide="x"></i></button>
             </div>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:10px;">Drag rows to reorder. The group executes them in order, top to bottom.</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:12px;">
+              <p style="font-size:0.8rem; color:var(--text-muted); margin:0;">Drag rows to reorder. The group executes them in order, top to bottom.</p>
+              <button class="btn btn-secondary btn-sm" id="btn-reverse-members-order" style="white-space:nowrap; gap:4px; font-size:0.75rem; flex-shrink:0;"><i data-lucide="arrow-up-down" style="width:14px;height:14px;"></i> Reverse Order</button>
+            </div>
             <div id="group-members-list" style="border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface-elevated); max-height:380px; overflow-y:auto;">
               <!-- populated by JS -->
             </div>

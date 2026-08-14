@@ -809,9 +809,6 @@ function getActiveFilters() {
     has_contact: document.getElementById('filter-contact')?.value || '',
     contact_hidden: document.getElementById('filter-hidden-contact')?.value || ''
   };
-  if (filters.has_contact === 'true') filters.has_email = 'true';
-  if (filters.has_contact === 'false') filters.has_email = 'false';
-  delete filters.has_contact;
 
   Object.keys(filters).forEach(k => {
     if (filters[k] === '' || filters[k] === null || filters[k] === undefined) {
@@ -1894,6 +1891,9 @@ document.getElementById('btn-create-schedule').addEventListener('click', async (
 
 async function loadSchedules() {
   try {
+    const checkedIds = Array.from(document.querySelectorAll('.sched-row-checkbox:checked')).map(cb => cb.dataset.id);
+    const selectAllChecked = document.getElementById('sched-select-all')?.checked || false;
+
     const res = await api('/api/schedule');
     const schedules = Array.isArray(res) ? res : (res.schedules || []);
     const tbody = document.getElementById('schedules-tbody');
@@ -1949,6 +1949,14 @@ async function loadSchedules() {
       `;
       tbody.appendChild(tr);
     });
+
+    // Restore checked state
+    checkedIds.forEach(id => {
+      const cb = document.querySelector(`.sched-row-checkbox[data-id="${id}"]`);
+      if (cb) cb.checked = true;
+    });
+    const selectAll = document.getElementById('sched-select-all');
+    if (selectAll) selectAll.checked = selectAllChecked;
 
     // Update bulk-assign group dropdown
     _updateBulkAssignDropdown();
@@ -2136,7 +2144,7 @@ function resetGroupForm() {
   const unitEl = document.getElementById('group-interval-unit');
   if (unitEl) unitEl.value = 'mins';
   const modeEl = document.getElementById('group-loop-mode');
-  if (modeEl) modeEl.value = 'loop';
+  if (modeEl) modeEl.value = 'once';
   const startEl = document.getElementById('group-start-time');
   if (startEl) startEl.value = '';
   const saveBtn = document.getElementById('btn-save-group');
@@ -2162,7 +2170,7 @@ window.editGroup = async (groupId) => {
     if (unitEl) unitEl.value = 'mins';
   }
   const modeEl = document.getElementById('group-loop-mode');
-  if (modeEl) modeEl.value = g.loop_mode || 'loop';
+  if (modeEl) modeEl.value = g.loop_mode || 'once';
   const startEl = document.getElementById('group-start-time');
   if (startEl) startEl.value = g.start_time ? g.start_time.slice(0, 16) : '';
   const saveBtn = document.getElementById('btn-save-group');
@@ -2180,7 +2188,7 @@ document.getElementById('btn-save-group')?.addEventListener('click', async () =>
   const unit = document.getElementById('group-interval-unit')?.value || 'mins';
   const intervalMins = unit === 'hours' ? val * 60 : val;
   if (isNaN(intervalMins) || intervalMins < 0) return showToast('Interval must be at least 0 minutes', 'error');
-  const loopMode = document.getElementById('group-loop-mode')?.value || 'loop';
+  const loopMode = document.getElementById('group-loop-mode')?.value || 'once';
   const startTime = document.getElementById('group-start-time')?.value || null;
   const payload = { name, interval_minutes: intervalMins, loop_mode: loopMode, start_time: startTime };
 

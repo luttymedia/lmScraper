@@ -340,14 +340,46 @@ async def query_events(filters: dict, page: int, per_page: int) -> tuple[list[di
         params.extend([f"%{filters['keyword']}%"] * 3)
         
     if filters.get('contact_hidden') is not None:
+        val = filters['contact_hidden']
+        if isinstance(val, str):
+            val = val.lower() in ('true', '1')
         conditions.append("contact_hidden = ?")
-        params.append(1 if filters['contact_hidden'] else 0)
+        params.append(1 if val else 0)
         
-    if filters.get('has_email'):
-        conditions.append("organizer_email IS NOT NULL AND organizer_email != ''")
+    contact_cols = [
+        "organizer_email", "organizer_phone", "organizer_instagram",
+        "organizer_facebook", "organizer_tiktok", "organizer_whatsapp",
+        "organizer_youtube", "organizer_twitter", "organizer_website"
+    ]
+
+    if filters.get('has_contact') is not None:
+        val = filters['has_contact']
+        if isinstance(val, str):
+            val = val.lower() in ('true', '1')
+        if val:
+            has_cond = " OR ".join([f"({col} IS NOT NULL AND {col} != '')" for col in contact_cols])
+            conditions.append(f"({has_cond})")
+        else:
+            no_cond = " AND ".join([f"({col} IS NULL OR {col} = '')" for col in contact_cols])
+            conditions.append(f"({no_cond})")
+
+    if filters.get('has_email') is not None:
+        val = filters['has_email']
+        if isinstance(val, str):
+            val = val.lower() in ('true', '1')
+        if val:
+            conditions.append("organizer_email IS NOT NULL AND organizer_email != ''")
+        else:
+            conditions.append("(organizer_email IS NULL OR organizer_email = '')")
         
-    if filters.get('has_phone'):
-        conditions.append("organizer_phone IS NOT NULL AND organizer_phone != ''")
+    if filters.get('has_phone') is not None:
+        val = filters['has_phone']
+        if isinstance(val, str):
+            val = val.lower() in ('true', '1')
+        if val:
+            conditions.append("organizer_phone IS NOT NULL AND organizer_phone != ''")
+        else:
+            conditions.append("(organizer_phone IS NULL OR organizer_phone = '')")
         
     where_clause = " AND ".join(conditions) if conditions else "1=1"
     

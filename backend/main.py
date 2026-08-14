@@ -193,6 +193,7 @@ def parse_event_filters(
     city: str | None = None,
     keyword: str | None = None,
     contact_hidden: bool | None = None,
+    has_contact: bool | None = None,
     has_email: bool | None = None,
     has_phone: bool | None = None,
     sort_by: str | None = None,
@@ -200,7 +201,7 @@ def parse_event_filters(
 ) -> dict:
     return {
         "job_ids": job_ids or job_id, "updated_by_job_id": updated_by_job_id, "date_from": date_from, "date_to": date_to,
-        "city": city, "keyword": keyword, "contact_hidden": contact_hidden,
+        "city": city, "keyword": keyword, "contact_hidden": contact_hidden, "has_contact": has_contact,
         "has_email": has_email, "has_phone": has_phone,
         "sort_by": sort_by, "sort_dir": sort_dir
     }
@@ -213,10 +214,11 @@ async def get_events_route(
     date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
+    has_contact: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir)
     events, total = await query_events(filters, page, per_page)
     return {"events": events, "total": total, "page": page, "per_page": per_page}
 
@@ -232,10 +234,11 @@ async def export_csv_route(
     date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
+    has_contact: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir)
     return await export_to_csv(filters)
 
 @app.get("/api/events/export/xlsx")
@@ -245,10 +248,11 @@ async def export_xlsx_route(
     date_from: str | None = None,
     date_to: str | None = None, city: str | None = None,
     keyword: str | None = None, contact_hidden: bool | None = None,
+    has_contact: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None
 ):
-    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir)
     return await export_to_xlsx(filters)
 
 # API Routes - Schedules
@@ -320,12 +324,12 @@ async def create_group_route(body: dict = Body(...)):
     if not body.get('name'):
         raise HTTPException(400, "Group name is required")
     interval = int(body.get('interval_minutes', 5))
-    if interval < 1:
-        raise HTTPException(400, "interval_minutes must be >= 1")
+    if interval < 0:
+        raise HTTPException(400, "interval_minutes must be >= 0")
     group_dict = {
         'name': body['name'],
         'interval_minutes': interval,
-        'loop_mode': body.get('loop_mode', 'loop'),
+        'loop_mode': body.get('loop_mode', 'once'),
         'start_time': body.get('start_time'),
         'active': 0  # created paused by default if no start_time (handled by create_group_schedule)
     }

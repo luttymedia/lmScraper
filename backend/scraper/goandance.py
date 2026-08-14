@@ -48,6 +48,19 @@ class GoAndDanceScraper(BaseScraper):
                 data = json.loads(data.read().decode('utf-8'))
                 
                 if data:
+                    org_data = data.get('organizer') or {}
+                    org_contact = org_data.get('contact') or {}
+                    event_contact = data.get('contact') or {}
+                    
+                    email = event_contact.get('email') or org_contact.get('email') or ''
+                    phone = event_contact.get('phone') or event_contact.get('whatsapp') or org_contact.get('phone') or org_contact.get('whatsapp') or ''
+                    has_direct_contact = bool(
+                        email or phone or
+                        event_contact.get('instagram') or org_contact.get('instagram') or
+                        event_contact.get('facebook') or org_contact.get('facebook') or
+                        event_contact.get('website') or org_contact.get('website')
+                    )
+
                     event = {
                         'title': data.get('name', ''),
                         'description': data.get('shortDescription', ''),
@@ -61,16 +74,9 @@ class GoAndDanceScraper(BaseScraper):
                         'event_url': url,
                         'source_domain': domain,
                         'image_url': data.get('poster', {}).get('url', ''),
-                        'contact_hidden': 1,
+                        'contact_hidden': 0 if has_direct_contact else 1,
                         'scraped_at': datetime.utcnow().isoformat(),
                     }
-                    
-                    org_data = data.get('organizer') or {}
-                    org_contact = org_data.get('contact') or {}
-                    event_contact = data.get('contact') or {}
-                    
-                    email = event_contact.get('email') or org_contact.get('email') or ''
-                    phone = event_contact.get('phone') or event_contact.get('whatsapp') or org_contact.get('phone') or org_contact.get('whatsapp') or ''
                     
                     org = {
                         'organizer_name': org_data.get('name', ''),

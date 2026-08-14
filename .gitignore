@@ -45,3 +45,6 @@ Desktop.ini
 # Playwright
 playwright-report/
 test-results/
+
+# User manual backups
+backups/

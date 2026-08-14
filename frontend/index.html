@@ -760,67 +760,93 @@
       <span>DB Size: <strong id="monitor-db-size">—</strong></span>
       <span>Cache Size: <strong id="monitor-cache-size">—</strong></span>
     </div>
-    <button class="btn btn-secondary btn-sm" id="btn-open-cleanup"><i data-lucide="trash-2" class="icon-sm"></i> Clean
-      up</button>
+    <button class="btn btn-secondary btn-sm" id="btn-open-cleanup"><i data-lucide="database" class="icon-sm"></i> Data
+      Management</button>
   </footer>
 
   <!-- Cleanup Modal -->
   <div class="modal-overlay hidden" id="modal-cleanup">
     <div class="modal">
-      <h3 class="modal-header">System Cleanup</h3>
-      <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+      <h3 class="modal-header">Data Management</h3>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 24px; max-height: 70vh; overflow-y: auto;">
 
-        <div
-          style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-          <div class="form-group" style="margin:0;">
-            <label>Delete HTML cache older than (days)</label>
-            <input type="number" id="cleanup-cache-days" class="input btn-sm" value="7" style="width: 100px;">
-          </div>
-          <button class="btn btn-secondary btn-sm" id="btn-clean-cache-age">Clean Cache</button>
-        </div>
-
-        <div
-          style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-          <div class="form-group" style="margin:0;">
-            <label>Delete HTML cache larger than (MB)</label>
-            <input type="number" id="cleanup-cache-mb" class="input btn-sm" value="500" style="width: 100px;">
-          </div>
-          <button class="btn btn-secondary btn-sm" id="btn-clean-cache-size">Clean Cache</button>
-        </div>
-
-        <div
-          style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-          <div class="form-group" style="margin:0;">
-            <label>Delete unlinked events older than (days)</label>
-            <input type="number" id="cleanup-events-days" class="input btn-sm" value="30" style="width: 100px;">
-          </div>
-          <button class="btn btn-secondary btn-sm" id="btn-clean-events">Clean Events</button>
-        </div>
-
-        <div
-          style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-          <span style="font-size:0.875rem; color:var(--text-secondary);">Compress all HTML caches (SQLite VACUUM)</span>
-          <button class="btn btn-secondary btn-sm" id="btn-clean-compress">Compress</button>
-        </div>
-
-        <div
-          style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-          <span style="font-size:0.875rem; color:var(--text-secondary);">Export full database backup</span>
-          <div>
-            <button class="btn btn-secondary btn-sm" id="btn-clean-backup">Backup DB</button>
-            <a id="backup-download-link" class="hidden" style="margin-left:8px; font-size:0.75rem; color:var(--accent);"
-              href="" download>Download</a>
+        <!-- Backup & Restore Section -->
+        <div style="border: 1px solid var(--border); border-radius: var(--radius-card); padding: 16px; background: var(--surface-elevated);">
+          <h4 style="font-size: 1rem; margin-top: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Backup & Restore</h4>
+          
+          <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+            <div class="form-group" style="margin:0;">
+              <label>Target Data</label>
+              <select id="backup-restore-target" class="select btn-sm" style="min-width: 180px;">
+                <option value="full">Full System</option>
+                <option value="results">Results & Cache Only</option>
+                <option value="schedules">Schedules & Groups Only</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
+              <div>
+                <button class="btn btn-secondary btn-sm" id="btn-clean-backup" style="display:flex; align-items:center;">
+                  <span id="backup-spinner" class="hidden" style="display:inline-block; width:14px; height:14px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.7s linear infinite; vertical-align:middle; margin-right:6px;"></span>
+                  Backup to ZIP
+                </button>
+                <a id="backup-download-link" class="hidden" style="margin-left:8px; font-size:0.75rem; color:var(--accent);" href="" download>Download</a>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="file" id="restore-backup-input" accept=".zip" style="display: none;">
+                <button class="btn btn-secondary btn-sm" id="btn-restore-backup" onclick="document.getElementById('restore-backup-input').click()">Restore from ZIP</button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div
-          style="display:flex; justify-content:space-between; align-items:center; background: rgba(248, 113, 113, 0.05); padding: 12px; border-radius: var(--radius-card); border: 1px solid rgba(248,113,113,0.2);">
-          <div class="form-group" style="margin:0;">
-            <label style="color:var(--error);">Purge everything (Type DELETE)</label>
-            <input type="text" id="cleanup-purge-confirm" class="input" placeholder="DELETE"
-              style="width: 120px; padding: 6px 12px; font-size: 0.875rem;">
+        <!-- Clean Up Section -->
+        <div style="border: 1px solid var(--border); border-radius: var(--radius-card); padding: 16px; background: var(--surface-elevated);">
+          <h4 style="font-size: 1rem; margin-top: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Clean Up & Purge</h4>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom: 12px;">
+            <div class="form-group" style="margin:0;">
+              <label>Delete HTML cache older than (days)</label>
+              <input type="number" id="cleanup-cache-days" class="input btn-sm" value="7" style="width: 100px;">
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-clean-cache-age">Clean Cache</button>
           </div>
-          <button class="btn btn-danger btn-sm" id="btn-clean-purge" disabled>PURGE ALL</button>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom: 12px;">
+            <div class="form-group" style="margin:0;">
+              <label>Delete HTML cache larger than (MB)</label>
+              <input type="number" id="cleanup-cache-mb" class="input btn-sm" value="500" style="width: 100px;">
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-clean-cache-size">Clean Cache</button>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom: 12px;">
+            <div class="form-group" style="margin:0;">
+              <label>Delete unlinked events older than (days)</label>
+              <input type="number" id="cleanup-events-days" class="input btn-sm" value="30" style="width: 100px;">
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-clean-events">Clean Events</button>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom: 16px;">
+            <span style="font-size:0.875rem; color:var(--text-secondary);">Compress all HTML caches (SQLite VACUUM)</span>
+            <button class="btn btn-secondary btn-sm" id="btn-clean-compress">Compress</button>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; background: rgba(248, 113, 113, 0.05); padding: 12px; border-radius: var(--radius-card); border: 1px solid rgba(248,113,113,0.2);">
+            <div class="form-group" style="margin:0;">
+              <label style="color:var(--error);">Target Purge</label>
+              <select id="purge-target" class="select btn-sm" style="margin-bottom: 8px;">
+                <option value="full">Full System</option>
+                <option value="results">Results & Cache Only</option>
+                <option value="schedules">Schedules & Groups Only</option>
+              </select>
+              <div style="display:flex; align-items:center; gap: 8px;">
+                <input type="text" id="cleanup-purge-confirm" class="input" placeholder="Type DELETE" style="width: 120px; padding: 6px 12px; font-size: 0.875rem;">
+                <span style="font-size: 0.75rem; color:var(--error);">to confirm</span>
+              </div>
+            </div>
+            <button class="btn btn-danger btn-sm" id="btn-clean-purge" disabled>PURGE</button>
+          </div>
         </div>
 
       </div>

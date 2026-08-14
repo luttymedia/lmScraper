@@ -1,9 +1,21 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "1.8.0"
+VERSION = "1.9.0"
 RELEASE_DATE = "2026-08-14"
 
 CHANGELOG = [
+    {
+        "version": "1.9.0",
+        "date": "2026-08-14",
+        "title": "Data Management System & Automated Maintenance",
+        "changes": [
+            "Implemented Data Management system with dedicated Backup & Restore and Clean Up & Purge sections",
+            "Added granular target selection for Full System, Results & Cache Only, and Schedules & Groups Only",
+            "Implemented direct-to-folder backups storing ZIP snapshots in backups/ subdirectories",
+            "Added automated job cache compression upon completion and once-per-day background maintenance",
+            "Added daily automated full backups with a 5-day rolling retention policy (manual backups preserved)"
+        ]
+    },
     {
         "version": "1.8.0",
         "date": "2026-08-14",

@@ -2,6 +2,8 @@
 import os
 import shutil
 import zipfile
+import asyncio
+import aiosqlite
 from pathlib import Path
 from datetime import datetime, timedelta
 from backend.storage.db import get_db_stats, delete_events_older_than, get_db
@@ -146,38 +148,138 @@ async def compress_html_caches() -> dict:
             zip_size = os.path.getsize(zip_path)
             compressed_jobs += 1
             freed_bytes += (dir_size - zip_size)
+            await asyncio.sleep(0.01)
             
     return {"compressed_jobs": compressed_jobs, "freed_bytes": freed_bytes}
 
-async def export_full_backup() -> str:
-    """Export all data to XLSX and zip the entire data dir."""
-    from backend.storage.exporter import export_to_xlsx
-    
-    EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    
-    # Create DB export first
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    xlsx_path = EXPORTS_DIR / f"full_export_{timestamp}.xlsx"
-    
-    response = await export_to_xlsx({})
-    with open(xlsx_path, 'wb') as f:
-        async for chunk in response.body_iterator:
-            f.write(chunk)
-            
-    # Zip the entire data dir
-    backup_zip_path = EXPORTS_DIR / f"backup_{timestamp}.zip"
-    with zipfile.ZipFile(backup_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for root, _, files in os.walk(DATA_DIR):
+async def compress_single_job_cache(job_id: str) -> dict:
+    """Zip a single job cache folder and remove original directory."""
+    job_dir = HTML_CACHE_DIR / job_id
+    if not job_dir.exists() or not job_dir.is_dir():
+        return {"compressed": False, "freed_bytes": 0}
+    dir_size = await get_dir_size(job_dir)
+    zip_path = f"{job_dir}.zip"
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(job_dir):
             for file in files:
                 file_path = os.path.join(root, file)
-                # Skip the backup zip we are creating and any other zips in exports
-                if str(backup_zip_path) == file_path:
-                    continue
-                if file.endswith('.zip') and EXPORTS_DIR in Path(file_path).parents:
-                    continue
-                arcname = os.path.relpath(file_path, DATA_DIR)
+                arcname = os.path.relpath(file_path, job_dir)
                 zipf.write(file_path, arcname)
+    shutil.rmtree(job_dir)
+    zip_size = os.path.getsize(zip_path)
+    return {"compressed": True, "freed_bytes": max(0, dir_size - zip_size)}
+
+async def prune_auto_backups(target: str = "full", max_keep: int = 5) -> int:
+    """Keep only the most recent N auto backups; delete older ones. Never touches manual backups."""
+    target_dir = PROJECT_ROOT / 'backups' / target
+    if not target_dir.exists():
+        return 0
+    auto_backups = sorted(
+        [p for p in target_dir.glob(f"backup_{target}_auto_*.zip")],
+        key=lambda p: p.stat().st_mtime
+    )
+    deleted_count = 0
+    while len(auto_backups) > max_keep:
+        oldest = auto_backups.pop(0)
+        try:
+            oldest.unlink()
+            deleted_count += 1
+        except OSError:
+            pass
+    return deleted_count
+
+async def has_auto_backup_today() -> bool:
+    """Check if an automated backup was already created today."""
+    target_dir = PROJECT_ROOT / 'backups' / 'full'
+    if not target_dir.exists():
+        return False
+    today_str = datetime.utcnow().strftime("%Y%m%d")
+    for p in target_dir.glob(f"backup_full_auto_{today_str}_*.zip"):
+        return True
+    return False
+
+async def run_automated_maintenance() -> dict:
+    """Run routine background maintenance on HTML caches & automated backups (once per calendar day max):
+    1. Check if maintenance ran today. If so, skip.
+    2. Compress any uncompressed job HTML cache folders.
+    3. Purge caches older than 7 days.
+    4. Cap total HTML cache size at 100 MB.
+    5. Create an automated full system backup for today.
+    6. Prune old automated full backups (keep latest 5).
+    """
+    if await has_auto_backup_today():
+        return {"skipped": True, "reason": "Automated maintenance already executed today"}
+
+    res_compress = await compress_html_caches()
+    res_age = await cleanup_html_cache_older_than(days=7)
+    res_size = await cleanup_html_cache_larger_than(size_mb=100.0)
+    
+    # Automated full system backup (once a day)
+    auto_backup_path = await export_backup(target="full", is_auto=True)
+    deleted_old_autos = await prune_auto_backups(target="full", max_keep=5)
+    
+    return {
+        "skipped": False,
+        "compress": res_compress,
+        "age_cleanup": res_age,
+        "size_cleanup": res_size,
+        "auto_backup": auto_backup_path,
+        "pruned_auto_backups": deleted_old_autos
+    }
+
+async def export_backup(target: str = "full", is_auto: bool = False) -> str:
+    """Export data depending on target (full, results, schedules)."""
+    import shutil
+    import tempfile
+    
+    target_dir = PROJECT_ROOT / 'backups' / target
+    target_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    tag = "auto" if is_auto else "manual"
+    backup_zip_path = target_dir / f"backup_{target}_{tag}_{timestamp}.zip"
+    
+    if target == "full":
+        # Zip the entire data dir
+        with zipfile.ZipFile(backup_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, _, files in os.walk(DATA_DIR):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    if str(backup_zip_path) == file_path:
+                        continue
+                    if EXPORTS_DIR in Path(file_path).parents:
+                        continue
+                    if file.endswith('.zip') and (PROJECT_ROOT / 'backups') in Path(file_path).parents:
+                        continue
+                    arcname = os.path.relpath(file_path, DATA_DIR)
+                    zipf.write(file_path, arcname)
+    else:
+        # Partial backups
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_db = Path(tmpdir) / 'lmscraper.db'
+            db_source = DATA_DIR / 'lmscraper.db'
+            await asyncio.to_thread(shutil.copy2, str(db_source), str(tmp_db))
+            
+            async with aiosqlite.connect(str(tmp_db)) as db:
+                if target == "results":
+                    await db.execute("DELETE FROM schedules")
+                    await db.execute("DELETE FROM schedule_groups")
+                    await db.execute("DELETE FROM schedule_group_memberships")
+                elif target == "schedules":
+                    await db.execute("DELETE FROM events")
+                    await db.execute("DELETE FROM jobs")
+                    await db.execute("DELETE FROM job_logs")
+                await db.commit()
+                await db.execute("VACUUM")
                 
+            with zipfile.ZipFile(backup_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                zipf.write(tmp_db, 'lmscraper.db')
+                if target == "results" and HTML_CACHE_DIR.exists():
+                    for root, _, files in os.walk(HTML_CACHE_DIR):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.relpath(file_path, DATA_DIR)
+                            zipf.write(file_path, arcname)
+                            
     return str(backup_zip_path)
 
 async def delete_job_cache(job_id: str) -> dict:
@@ -193,22 +295,15 @@ IMPORT_BACKUPS_DIR = DATA_DIR / 'exports' / 'import_backups'
 MAX_IMPORT_BACKUPS = 10
 
 async def backup_db_for_import() -> str:
-    """Snapshot the live SQLite DB to the import_backups folder.
-
-    Keeps at most MAX_IMPORT_BACKUPS files; oldest are removed first.
-    Returns the path of the new backup file.
-    """
+    """Snapshot the live SQLite DB to the import_backups folder."""
     import asyncio
 
     IMPORT_BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
-
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     backup_path = IMPORT_BACKUPS_DIR / f"backup_{timestamp}.db"
-
     db_source = DATA_DIR / 'lmscraper.db'
     await asyncio.to_thread(shutil.copy2, str(db_source), str(backup_path))
 
-    # Enforce retention limit: keep only the N most-recent backups
     existing = sorted(IMPORT_BACKUPS_DIR.glob('backup_*.db'), key=lambda p: p.stat().st_mtime)
     while len(existing) > MAX_IMPORT_BACKUPS:
         oldest = existing.pop(0)
@@ -219,32 +314,42 @@ async def backup_db_for_import() -> str:
 
     return str(backup_path)
 
-
-async def purge_all() -> dict:
-    """Delete ALL events, jobs, and clear the HTML cache completely."""
+async def purge_data(target: str = "full") -> dict:
+    """Delete targeted data from the DB and caches."""
     freed_bytes = 0
     deleted_jobs = 0
     deleted_events = 0
+    deleted_schedules = 0
+    deleted_groups = 0
     
     async with get_db() as db:
-        # Delete all events
-        cursor = await db.execute("DELETE FROM events")
-        deleted_events = cursor.rowcount
-        
-        # Delete all jobs
-        cursor = await db.execute("DELETE FROM jobs")
-        deleted_jobs = cursor.rowcount
-        
+        if target in ("full", "results"):
+            cursor = await db.execute("DELETE FROM events")
+            deleted_events = cursor.rowcount
+            cursor = await db.execute("DELETE FROM jobs")
+            deleted_jobs = cursor.rowcount
+            await db.execute("DELETE FROM job_logs")
+            
+        if target in ("full", "schedules"):
+            cursor = await db.execute("DELETE FROM schedules")
+            deleted_schedules = cursor.rowcount
+            cursor = await db.execute("DELETE FROM schedule_groups")
+            deleted_groups = cursor.rowcount
+            await db.execute("DELETE FROM schedule_group_memberships")
+            
         await db.commit()
+        await db.execute("VACUUM")
         
-    # Clear HTML Cache
-    if HTML_CACHE_DIR.exists():
-        freed_bytes = await get_dir_size(HTML_CACHE_DIR)
-        shutil.rmtree(HTML_CACHE_DIR)
-        HTML_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        
+    if target in ("full", "results"):
+        if HTML_CACHE_DIR.exists():
+            freed_bytes = await get_dir_size(HTML_CACHE_DIR)
+            shutil.rmtree(HTML_CACHE_DIR)
+            HTML_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            
     return {
         "deleted_events": deleted_events,
         "deleted_jobs": deleted_jobs,
+        "deleted_schedules": deleted_schedules,
+        "deleted_groups": deleted_groups,
         "freed_bytes": freed_bytes
     }

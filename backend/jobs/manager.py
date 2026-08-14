@@ -45,6 +45,11 @@ async def _broadcast_loop(job_id: str):
     finally:
         if job_id in active_jobs:
             del active_jobs[job_id]
+        from backend.storage.monitor import compress_single_job_cache
+        try:
+            await compress_single_job_cache(job_id)
+        except Exception:
+            pass
 
 async def start_job(job_id: str, config: ScraperConfig) -> None:
     """Start a new scraping job."""

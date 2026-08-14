@@ -2859,6 +2859,55 @@ document.getElementById('btn-close-alert').addEventListener('click', () => {
 document.getElementById('btn-open-cleanup').addEventListener('click', () => openModal('modal-cleanup'));
 document.getElementById('btn-close-cleanup').addEventListener('click', () => closeModal('modal-cleanup'));
 
+document.getElementById('btn-clean-backup').addEventListener('click', async () => {
+  const target = document.getElementById('backup-restore-target').value;
+  let targetName = target === 'full' ? 'Full System' : (target === 'results' ? 'Results & Cache Only' : 'Schedules & Groups Only');
+  
+  if (await confirmAction(`This will create a backup of: ${targetName}. Do you want to proceed?`)) {
+    const btn = document.getElementById('btn-clean-backup');
+    const spinner = document.getElementById('backup-spinner');
+    try {
+      btn.disabled = true;
+      if (spinner) spinner.classList.remove('hidden');
+      showToast('Creating backup, please wait...', 'info');
+      const res = await api(`/api/monitor/backup?target=${target}`);
+      showToast(`Backup successfully saved to backups/${target}/ !`, 'success');
+    } catch(e) {
+      showToast('Failed to create backup', 'error');
+    } finally {
+      btn.disabled = false;
+      if (spinner) spinner.classList.add('hidden');
+    }
+  }
+});
+
+document.getElementById('restore-backup-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const target = document.getElementById('backup-restore-target').value;
+  let targetName = target === 'full' ? 'Full System' : (target === 'results' ? 'Results & Cache Only' : 'Schedules & Groups Only');
+  
+  if (await confirmAction(`Are you sure you want to restore ${targetName} from ${file.name}? This will overwrite the current selected data and you will lose any new data in those tables.`)) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('target', target);
+    try {
+      showToast('Restoring backup, please wait...', 'info');
+      const res = await fetch('/api/monitor/restore', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to restore backup');
+      showToast('Backup restored successfully. Reloading...', 'success');
+      setTimeout(() => location.reload(), 1500);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+  e.target.value = '';
+});
+
 const purgeConfirm = document.getElementById('cleanup-purge-confirm');
 const purgeBtn = document.getElementById('btn-clean-purge');
 purgeConfirm.addEventListener('input', (e) => {
@@ -2902,22 +2951,14 @@ document.getElementById('btn-clean-compress').addEventListener('click', async ()
   }
 });
 
-document.getElementById('btn-clean-backup').addEventListener('click', async () => {
-  if (await confirmAction(`This will create a full backup of your database and HTML caches into a downloadable ZIP file. Do you want to proceed?`)) {
-    try {
-      const res = await api('/api/monitor/backup');
-      const link = document.getElementById('backup-download-link');
-      link.href = API + res.download_url;
-      link.classList.remove('hidden');
-      showToast('Backup created', 'success');
-    } catch(e) {}
-  }
-});
 
 purgeBtn.addEventListener('click', async () => {
   if(purgeConfirm.value === 'DELETE') {
-    if (await confirmAction(`WARNING: This will purge EVERYTHING. All jobs, events, sessions, and HTML caches will be wiped. Are you absolutely sure?`)) {
-      runCleanup('/api/monitor/cleanup/purge-all');
+    const target = document.getElementById('purge-target').value;
+    let targetName = target === 'full' ? 'EVERYTHING (Jobs, Events, HTML Caches, Schedules, Groups)' : (target === 'results' ? 'Results & HTML Caches' : 'Schedules & Groups');
+    
+    if (await confirmAction(`WARNING: This will purge ${targetName}. Are you absolutely sure?`)) {
+      runCleanup('/api/monitor/cleanup/purge', { target });
       purgeConfirm.value = '';
       purgeBtn.disabled = true;
     }

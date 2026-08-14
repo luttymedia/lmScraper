@@ -27,7 +27,7 @@ from backend.storage.exporter import (
 )
 from backend.storage.monitor import (
     get_stats, cleanup_html_cache_older_than, cleanup_html_cache_larger_than,
-    cleanup_events_older_than, compress_html_caches, export_full_backup,
+    cleanup_events_older_than, compress_html_caches, export_backup, purge_data,
     delete_job_cache, backup_db_for_import
 )
 from backend.jobs.manager import (
@@ -49,12 +49,28 @@ from backend.version import VERSION, RELEASE_DATE, CHANGELOG
 PROJECT_ROOT = Path(__file__).parent.parent
 FRONTEND_DIR = PROJECT_ROOT / 'frontend'
 
+async def periodic_maintenance_loop():
+    """Periodically run background maintenance on HTML caches (compression, 7-day retention, 100MB cap)."""
+    # Delay initial maintenance by 15s so dashboard loads instantly on startup
+    await asyncio.sleep(15)
+    while True:
+        try:
+            from backend.storage.monitor import run_automated_maintenance
+            await run_automated_maintenance()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass
+        await asyncio.sleep(4 * 3600)  # Every 4 hours
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle events for FastAPI."""
     await init_db()
     await start_scheduler()
+    maint_task = asyncio.create_task(periodic_maintenance_loop())
     yield
+    maint_task.cancel()
     await shutdown_scheduler()
 
 app = FastAPI(title="LMScraper", lifespan=lifespan)
@@ -524,17 +540,88 @@ async def cleanup_events_older_route(body: dict = Body(...)):
 async def compress_caches_route():
     return await compress_html_caches()
 
-@app.post("/api/monitor/cleanup/purge-all")
-async def purge_all_route():
-    from backend.storage.monitor import purge_all
-    res = await purge_all()
-    mb = res["freed_bytes"] / (1024*1024)
-    return {"message": f"Purged {res['deleted_events']} events and {res['deleted_jobs']} jobs. Freed {mb:.2f} MB of cache."}
+@app.post("/api/monitor/cleanup/purge")
+async def purge_data_route(payload: dict = Body(...)):
+    from backend.storage.monitor import purge_data
+    target = payload.get("target", "full")
+    res = await purge_data(target)
+    mb = res['freed_bytes'] / (1024 * 1024)
+    return {"message": f"Purged targeted data. Freed {mb:.2f} MB of cache."}
 
 @app.get("/api/monitor/backup")
-async def backup_route():
-    path = await export_full_backup()
+async def backup_route(target: str = "full"):
+    from backend.storage.monitor import export_backup
+    path = await export_backup(target)
     return {"path": path}
+
+@app.get("/api/download")
+async def download_file_route(path: str):
+    import os
+    from fastapi.responses import FileResponse
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(path, filename=os.path.basename(path))
+
+@app.post("/api/monitor/restore")
+async def restore_backup_route(target: str = Form("full"), file: UploadFile = File(...)):
+    import zipfile
+    import tempfile
+    import os
+    import shutil
+    import aiosqlite
+    from backend.storage.monitor import DATA_DIR, HTML_CACHE_DIR
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+        
+    try:
+        with zipfile.ZipFile(tmp_path, 'r') as zipf:
+            if target == "full":
+                zipf.extractall(DATA_DIR)
+            else:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    zipf.extract('lmscraper.db', path=tmpdir)
+                    extracted_db = os.path.join(tmpdir, 'lmscraper.db')
+                    
+                    db_target = DATA_DIR / 'lmscraper.db'
+                    async with aiosqlite.connect(str(db_target)) as db:
+                        await db.execute(f"ATTACH DATABASE '{extracted_db}' AS backupdb")
+                        
+                        if target == "results":
+                            await db.execute("DELETE FROM main.events")
+                            await db.execute("INSERT INTO main.events SELECT * FROM backupdb.events")
+                            await db.execute("DELETE FROM main.jobs")
+                            await db.execute("INSERT INTO main.jobs SELECT * FROM backupdb.jobs")
+                            await db.execute("DELETE FROM main.job_logs")
+                            await db.execute("INSERT INTO main.job_logs SELECT * FROM backupdb.job_logs")
+                        elif target == "schedules":
+                            await db.execute("DELETE FROM main.schedules")
+                            await db.execute("INSERT INTO main.schedules SELECT * FROM backupdb.schedules")
+                            await db.execute("DELETE FROM main.schedule_groups")
+                            await db.execute("INSERT INTO main.schedule_groups SELECT * FROM backupdb.schedule_groups")
+                            await db.execute("DELETE FROM main.schedule_group_memberships")
+                            await db.execute("INSERT INTO main.schedule_group_memberships SELECT * FROM backupdb.schedule_group_memberships")
+                            
+                        await db.commit()
+                        await db.execute("DETACH DATABASE backupdb")
+                        
+                if target == "results":
+                    if HTML_CACHE_DIR.exists():
+                        shutil.rmtree(HTML_CACHE_DIR)
+                    HTML_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                    cache_files = [f for f in zipf.namelist() if f.startswith('html_cache')]
+                    zipf.extractall(path=DATA_DIR, members=cache_files)
+                    
+        return {"message": f"Backup ({target}) restored successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to restore backup: {str(e)}")
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
 
 @app.delete("/api/monitor/cleanup/job/{job_id}")
 async def delete_job_cache_route(job_id: str):

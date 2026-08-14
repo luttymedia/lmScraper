@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono&display=swap"
     rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="style.css?v=25">
+  <link rel="stylesheet" href="style.css?v=46">
   <style>
     .multiselect-list {
       display: flex !important;
@@ -109,7 +109,7 @@
     <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom: 8px;">
       <h1 style="margin:0;">LMScraper</h1>
       <button class="badge badge-done" id="btn-version" title="View Version & Changelog"
-        style="cursor: pointer; border: none; font-weight: 600; padding: 4px 8px; font-size: 0.75rem;">v1.7.0</button>
+        style="cursor: pointer; border: none; font-weight: 600; padding: 4px 8px; font-size: 0.75rem;">v1.8.0</button>
     </div>
     <nav>
       <a href="#" class="nav-item active" data-target="section-new-job">
@@ -323,13 +323,15 @@
             CSV</button>
           <button class="btn btn-secondary btn-sm" id="btn-export-xlsx"><i data-lucide="download" class="icon-sm"></i>
             XLSX</button>
+          <button class="btn btn-secondary btn-sm" id="btn-import" style="border-color: var(--accent); color: var(--accent);"><i data-lucide="upload" class="icon-sm"></i>
+            Import</button>
         </div>
       </div>
 
       <div class="filter-bar">
         <input type="date" id="filter-date-from" class="input btn-sm" title="Date From">
         <input type="date" id="filter-date-to" class="input btn-sm" title="Date To">
-        <input type="text" id="filter-city" class="input btn-sm" placeholder="City">
+        <input type="text" id="filter-city" class="input btn-sm" placeholder="City/Country" title="City / Country">
         <input type="text" id="filter-keyword" class="input btn-sm" placeholder="Keyword">
         <div class="custom-multiselect" id="job-multiselect-wrapper" style="position: relative;">
           <button type="button" class="select btn-sm multiselect-trigger" id="job-multiselect-btn"
@@ -376,6 +378,11 @@
           <option value="">Hidden Contact: Any</option>
           <option value="true">Yes (Hidden)</option>
           <option value="false">No (Direct)</option>
+        </select>
+        <select id="filter-show-hidden" class="select btn-sm">
+          <option value="">Hidden: Off</option>
+          <option value="all">Show All</option>
+          <option value="only">Only Hidden</option>
         </select>
         <button class="btn btn-primary btn-sm" id="btn-apply-filters">Apply</button>
         <button class="btn btn-ghost btn-sm" id="btn-reset-filters">Reset</button>
@@ -844,7 +851,7 @@
         <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--success); margin: 0;">LMScraper</h2>
         <div style="margin-top: 6px;">
           <span id="version-modal-tag"
-            style="display: inline-block; font-family: var(--font-mono); font-size: 0.78rem; padding: 3px 14px; border-radius: 9999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-secondary);">v1.7.0</span>
+            style="display: inline-block; font-family: var(--font-mono); font-size: 0.78rem; padding: 3px 14px; border-radius: 9999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-secondary);">v1.8.0</span>
         </div>
       </div>
 
@@ -1052,9 +1059,116 @@
     </div>
   </div>
 
+  <!-- ── Import Modal ──────────────────────────────────────────────────── -->
+  <div id="import-modal-overlay" class="modal-overlay import-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="import-modal-title">
+    <div class="import-modal card">
+      <!-- Header -->
+      <div class="import-modal-header">
+        <h3 id="import-modal-title" style="margin:0; font-size:1.1rem;">Import Events</h3>
+        <button type="button" class="btn btn-ghost btn-sm" id="import-modal-close" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Step indicators -->
+      <div class="import-steps">
+        <div class="import-step active" id="import-step-ind-1">
+          <div class="import-step-circle">1</div>
+          <span>Upload</span>
+        </div>
+        <div class="import-step-line"></div>
+        <div class="import-step" id="import-step-ind-2">
+          <div class="import-step-circle">2</div>
+          <span>Preview</span>
+        </div>
+        <div class="import-step-line"></div>
+        <div class="import-step" id="import-step-ind-3">
+          <div class="import-step-circle">3</div>
+          <span>Done</span>
+        </div>
+      </div>
+
+      <!-- Step 1: Upload -->
+      <div id="import-step-1" class="import-step-content">
+        <div class="import-dropzone" id="import-dropzone">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted); margin-bottom:10px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p style="margin:0 0 4px; font-weight:500;">Drag &amp; drop your file here</p>
+          <p style="margin:0; font-size:0.8rem; color:var(--text-muted);">or click to browse — .csv or .xlsx</p>
+          <input type="file" id="import-file-input" accept=".csv,.xlsx,.xls" style="display:none;">
+        </div>
+        <div id="import-file-chosen" class="hidden" style="margin-top:10px; padding:10px 14px; background:var(--surface-elevated); border:1px solid var(--border); border-radius:var(--radius-sm); display:flex; align-items:center; gap:10px; font-size:0.875rem;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span id="import-file-name" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+          <button type="button" class="btn btn-ghost btn-xs" id="import-file-clear" style="flex-shrink:0;">✕</button>
+        </div>
+
+        <div style="margin-top:20px;">
+          <p style="font-size:0.85rem; font-weight:600; margin:0 0 10px; color:var(--text-secondary);">Import mode</p>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <label class="import-radio-label">
+              <input type="radio" name="import-mode" value="partial" checked>
+              <div>
+                <strong>Partial file</strong>
+                <p>Only rows present in the file are affected. Records absent from the file are left completely untouched. Use this when importing a subset (e.g. only new records from one job).</p>
+              </div>
+            </label>
+            <label class="import-radio-label">
+              <input type="radio" name="import-mode" value="full">
+              <div>
+                <strong>Complete file</strong>
+                <p>All records in the database are compared. Records whose ID doesn't appear in your file will be hidden. Use this when your file represents the full desired state.</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="import-modal-footer">
+          <button type="button" class="btn btn-ghost btn-sm" id="import-btn-cancel-1">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" id="import-btn-preview" disabled>
+            <span id="import-preview-spinner" class="hidden" style="display:inline-block; width:14px; height:14px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.7s linear infinite; vertical-align:middle; margin-right:6px;"></span>
+            Preview Changes →
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2: Preview -->
+      <div id="import-step-2" class="import-step-content hidden">
+        <!-- Summary chips -->
+        <div id="import-summary-chips" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px;"></div>
+
+        <!-- Diff tabs -->
+        <div id="import-diff-tabs" style="display:flex; gap:4px; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:0;"></div>
+        <div id="import-diff-table-wrap" style="max-height:340px; overflow-y:auto; overflow-x:auto;">
+          <table id="import-diff-table" style="width:100%; border-collapse:collapse; font-size:0.8rem;"></table>
+        </div>
+
+        <div class="import-modal-footer">
+          <button type="button" class="btn btn-ghost btn-sm" id="import-btn-back">← Back</button>
+          <button type="button" class="btn btn-primary btn-sm" id="import-btn-apply">
+            <span id="import-apply-spinner" class="hidden" style="display:inline-block; width:14px; height:14px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.7s linear infinite; vertical-align:middle; margin-right:6px;"></span>
+            Confirm Import
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 3: Done -->
+      <div id="import-step-3" class="import-step-content hidden">
+        <div style="text-align:center; padding:24px 0;">
+          <div style="width:52px; height:52px; border-radius:50%; background:rgba(80,200,120,0.15); display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#50c878" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <p style="font-size:1.05rem; font-weight:600; margin:0 0 8px;">Import complete</p>
+          <div id="import-done-counts" style="font-size:0.875rem; color:var(--text-secondary); line-height:1.7;"></div>
+          <div id="import-done-backup" style="margin-top:14px; font-size:0.775rem; color:var(--text-muted); background:var(--surface-elevated); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 12px; text-align:left; word-break:break-all;"></div>
+        </div>
+        <div class="import-modal-footer">
+          <button type="button" class="btn btn-primary btn-sm" id="import-btn-done">Close &amp; Refresh</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast-container"></div>
 
-  <script type="module" src="app.js?v=43"></script>
+  <script type="module" src="app.js?v=44"></script>
   <script>lucide.createIcons();</script>
 </body>
 

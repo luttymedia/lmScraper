@@ -228,6 +228,12 @@ async def init_db() -> None:
         except aiosqlite.OperationalError:
             pass  # Column already exists
 
+        try:
+            await db.execute('ALTER TABLE events ADD COLUMN is_hidden INTEGER DEFAULT 0')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
         # Clean up any orphaned events whose job_id was deleted
         try:
             await db.execute("DELETE FROM events WHERE job_id NOT IN (SELECT id FROM jobs)")
@@ -304,6 +310,15 @@ async def query_events(filters: dict, page: int, per_page: int) -> tuple[list[di
     """Query events with pagination and filters."""
     conditions = []
     params = []
+
+    # show_hidden: 'all' shows everything, 'only' shows only hidden, default hides hidden
+    show_hidden = filters.get('show_hidden', 'no')
+    if show_hidden == 'only':
+        conditions.append("is_hidden = 1")
+    elif show_hidden == 'all':
+        pass  # No filter — show everything
+    else:
+        conditions.append("is_hidden = 0")
     
     job_ids_raw = filters.get('job_ids') or filters.get('job_id')
     if job_ids_raw:
@@ -332,12 +347,21 @@ async def query_events(filters: dict, page: int, per_page: int) -> tuple[list[di
         params.append(filters['date_to'])
         
     if filters.get('city'):
-        conditions.append("city LIKE ?")
-        params.append(f"%{filters['city']}%")
+        conditions.append("(city LIKE ? OR country LIKE ?)")
+        params.extend([f"%{filters['city']}%", f"%{filters['city']}%"])
         
     if filters.get('keyword'):
-        conditions.append("(title LIKE ? OR description LIKE ? OR category LIKE ?)")
-        params.extend([f"%{filters['keyword']}%"] * 3)
+        kw_cols = [
+            "title", "description", "category", "dance_style",
+            "city", "country", "venue", "organizer_name", "platform",
+            "organizer_email", "organizer_phone", "organizer_instagram",
+            "organizer_facebook", "organizer_tiktok", "organizer_whatsapp",
+            "organizer_youtube", "organizer_twitter", "organizer_website",
+            "event_url", "date_start", "date_end", "price"
+        ]
+        kw_cond = " OR ".join([f"{col} LIKE ?" for col in kw_cols])
+        conditions.append(f"({kw_cond})")
+        params.extend([f"%{filters['keyword']}%"] * len(kw_cols))
         
     if filters.get('contact_hidden') is not None:
         val = filters['contact_hidden']
@@ -857,3 +881,60 @@ async def reorder_group_schedules(group_id: str, ordered_ids: list[str]) -> None
                 (i, group_id, sched_id)
             )
         await db.commit()
+
+# ---------------------------------------------------------------------------
+# Import/Export sync helpers
+# ---------------------------------------------------------------------------
+
+IMPORT_EDITABLE_FIELDS = [
+    'title', 'date_start', 'date_end', 'city', 'country', 'venue', 'price',
+    'category', 'event_url', 'organizer_name', 'organizer_email',
+    'organizer_phone', 'organizer_instagram', 'organizer_facebook',
+    'organizer_tiktok', 'organizer_whatsapp', 'organizer_youtube',
+    'organizer_twitter', 'organizer_website', 'contact_hidden',
+    'dance_style', 'platform', 'is_hidden',
+]
+
+async def get_events_by_ids(ids: list[int]) -> dict[int, dict]:
+    """Fetch events by their integer IDs. Returns a dict keyed by id."""
+    if not ids:
+        return {}
+    placeholders = ', '.join(['?'] * len(ids))
+    query = f"SELECT * FROM events WHERE id IN ({placeholders})"
+    async with get_db() as db:
+        async with db.execute(query, ids) as cursor:
+            rows = await cursor.fetchall()
+    return {row['id']: dict(row) for row in rows}
+
+async def get_all_event_ids() -> set[int]:
+    """Return the set of all event IDs currently in the database."""
+    async with get_db() as db:
+        async with db.execute("SELECT id FROM events") as cursor:
+            rows = await cursor.fetchall()
+    return {row[0] for row in rows}
+
+async def bulk_update_events(updates: list[dict]) -> int:
+    """Update multiple events in a single transaction.
+
+    Each dict in *updates* must contain 'id' (the event's integer primary key)
+    plus any subset of IMPORT_EDITABLE_FIELDS.  Returns the number of rows
+    actually updated.
+    """
+    if not updates:
+        return 0
+    updated = 0
+    async with get_db() as db:
+        for row in updates:
+            event_id = row.get('id')
+            if event_id is None:
+                continue
+            fields = {k: v for k, v in row.items() if k != 'id' and k in IMPORT_EDITABLE_FIELDS}
+            if not fields:
+                continue
+            set_clauses = ', '.join(f"{k} = ?" for k in fields)
+            values = list(fields.values()) + [event_id]
+            await db.execute(f"UPDATE events SET {set_clauses} WHERE id = ?", values)
+            updated += 1
+        await db.commit()
+    return updated
+

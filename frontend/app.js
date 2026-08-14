@@ -807,7 +807,8 @@ function getActiveFilters() {
     job_ids: view_updated_for_job ? '' : Array.from(selectedJobIds).join(','),
     updated_by_job_id: view_updated_for_job || '',
     has_contact: document.getElementById('filter-contact')?.value || '',
-    contact_hidden: document.getElementById('filter-hidden-contact')?.value || ''
+    contact_hidden: document.getElementById('filter-hidden-contact')?.value || '',
+    show_hidden: document.getElementById('filter-show-hidden')?.value || '',
   };
 
   Object.keys(filters).forEach(k => {
@@ -974,6 +975,283 @@ document.getElementById('btn-export-xlsx').addEventListener('click', () => {
   const query = new URLSearchParams(getActiveFilters()).toString();
   window.open(`${API}/api/events/export/xlsx?${query}`, '_blank');
 });
+
+// ── Import Modal ─────────────────────────────────────────────────────────────
+
+(function setupImportModal() {
+  const overlay    = document.getElementById('import-modal-overlay');
+  const fileInput  = document.getElementById('import-file-input');
+  const fileChosen = document.getElementById('import-file-chosen');
+  const fileName   = document.getElementById('import-file-name');
+  const fileClear  = document.getElementById('import-file-clear');
+  const dropzone   = document.getElementById('import-dropzone');
+  const btnPreview = document.getElementById('import-btn-preview');
+  const btnApply   = document.getElementById('import-btn-apply');
+  const btnBack    = document.getElementById('import-btn-back');
+  const btnDone    = document.getElementById('import-btn-done');
+  const previewSpinner = document.getElementById('import-preview-spinner');
+  const applySpinner   = document.getElementById('import-apply-spinner');
+
+  let currentFile = null;
+  let currentDiff = null;  // last preview response
+  let currentDiffTab = null;
+
+  function getMode() {
+    return document.querySelector('input[name="import-mode"]:checked')?.value || 'partial';
+  }
+
+  function openModal() {
+    overlay.classList.remove('hidden');
+    goToStep(1);
+  }
+
+  function closeModal() {
+    overlay.classList.add('hidden');
+    resetStep1();
+  }
+
+  function resetStep1() {
+    currentFile = null;
+    currentDiff = null;
+    fileInput.value = '';
+    fileChosen.classList.add('hidden');
+    fileName.textContent = '';
+    btnPreview.disabled = true;
+    document.querySelector('input[name="import-mode"][value="partial"]').checked = true;
+  }
+
+  function goToStep(n) {
+    [1, 2, 3].forEach(i => {
+      document.getElementById(`import-step-${i}`).classList.toggle('hidden', i !== n);
+      const ind = document.getElementById(`import-step-ind-${i}`);
+      ind.classList.remove('active', 'done');
+      if (i < n)  ind.classList.add('done');
+      if (i === n) ind.classList.add('active');
+    });
+  }
+
+  function setFile(file) {
+    if (!file) return;
+    currentFile = file;
+    fileName.textContent = file.name;
+    fileChosen.classList.remove('hidden');
+    btnPreview.disabled = false;
+  }
+
+  // Open
+  document.getElementById('btn-import').addEventListener('click', openModal);
+  document.getElementById('import-modal-close').addEventListener('click', closeModal);
+  document.getElementById('import-btn-cancel-1').addEventListener('click', closeModal);
+
+  // Close on backdrop click
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeModal(); });
+
+  // File picker
+  fileInput.addEventListener('change', () => setFile(fileInput.files[0]));
+  fileClear.addEventListener('click', () => {
+    currentFile = null;
+    fileInput.value = '';
+    fileChosen.classList.add('hidden');
+    btnPreview.disabled = true;
+  });
+
+  // Drag & drop
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) setFile(f);
+  });
+
+  // ── Step 2 helpers ──
+
+  const CHIP_CFG = [
+    { key: 'updated',   label: '✏ Updated',   cls: 'import-chip-updated'  },
+    { key: 'inserted',  label: '+ Inserted',  cls: 'import-chip-inserted' },
+    { key: 'removed',   label: '✕ Removed',   cls: 'import-chip-removed'  },
+    { key: 'unchanged', label: '— Unchanged', cls: 'import-chip-unchanged'},
+    { key: 'not_found', label: '⚠ Not Found', cls: 'import-chip-warn'     },
+  ];
+
+  function renderChips(summary) {
+    const container = document.getElementById('import-summary-chips');
+    container.innerHTML = '';
+    CHIP_CFG.forEach(({ key, label, cls }) => {
+      const count = summary[key] ?? 0;
+      const chip = document.createElement('span');
+      chip.className = `import-chip ${cls}`;
+      chip.textContent = `${label}: ${count}`;
+      container.appendChild(chip);
+    });
+  }
+
+  const TAB_CFG = [
+    { key: 'updated',   label: 'Updated'   },
+    { key: 'inserted',  label: 'Inserted'  },
+    { key: 'removed',   label: 'Removed'   },
+    { key: 'not_found', label: '⚠ Not Found'},
+  ];
+
+  function renderDiffTabs(diff) {
+    const tabBar  = document.getElementById('import-diff-tabs');
+    tabBar.innerHTML = '';
+    let firstTab = null;
+
+    TAB_CFG.forEach(({ key, label }) => {
+      const rows = diff.rows[key] || [];
+      if (rows.length === 0) return;
+      const btn = document.createElement('button');
+      btn.className = 'import-diff-tab';
+      btn.textContent = `${label} (${rows.length})`;
+      btn.dataset.tab = key;
+      btn.addEventListener('click', () => activateDiffTab(key, diff));
+      tabBar.appendChild(btn);
+      if (!firstTab) firstTab = key;
+    });
+
+    if (firstTab) activateDiffTab(firstTab, diff);
+    else {
+      document.getElementById('import-diff-table').innerHTML =
+        `<tr><td style="color:var(--text-muted); padding:16px;">No changes — everything is already in sync.</td></tr>`;
+    }
+  }
+
+  function activateDiffTab(key, diff) {
+    currentDiffTab = key;
+    document.querySelectorAll('.import-diff-tab').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === key);
+    });
+    renderDiffTable(key, diff.rows[key] || []);
+  }
+
+  function renderDiffTable(key, rows) {
+    const table = document.getElementById('import-diff-table');
+    table.innerHTML = '';
+
+    if (rows.length === 0) {
+      table.innerHTML = `<tr><td style="color:var(--text-muted); padding:16px;">No entries in this category.</td></tr>`;
+      return;
+    }
+
+    const thead = document.createElement('thead');
+    const tbody = document.createElement('tbody');
+
+    if (key === 'updated') {
+      thead.innerHTML = `<tr><th>#</th><th>Title</th><th>Changes</th></tr>`;
+      rows.forEach(r => {
+        const changes = Object.entries(r.field_changes || {}).map(([f, [oldV, newV]]) =>
+          `<div><span style="color:var(--text-muted);font-weight:600;">${escapeHtml(f)}:</span> ` +
+          `<span class="import-diff-change-old">${escapeHtml(oldV)}</span> ` +
+          `<span style="color:var(--text-muted); margin:0 4px;">→</span> ` +
+          `<span class="import-diff-change-new">${escapeHtml(newV)}</span></div>`
+        ).join('');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td style="color:var(--text-muted);">#${r.record_id}</td><td>${escapeHtml(r.title || '—')}</td><td>${changes || '—'}</td>`;
+        tbody.appendChild(tr);
+      });
+    } else if (key === 'inserted') {
+      const fields = ['title', 'city', 'date_start', 'organizer_name'];
+      thead.innerHTML = `<tr><th>Title</th><th>City</th><th>Date Start</th><th>Organizer</th></tr>`;
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = fields.map(f => `<td>${escapeHtml(r[f] || '—')}</td>`).join('');
+        tbody.appendChild(tr);
+      });
+    } else if (key === 'removed' || key === 'hidden') {
+      thead.innerHTML = `<tr><th>#</th><th>Title</th></tr>`;
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td style="color:var(--text-muted);">#${r.record_id}</td><td>${escapeHtml(r.title || '—')}</td>`;
+        tbody.appendChild(tr);
+      });
+    } else if (key === 'not_found') {
+      thead.innerHTML = `<tr><th>record_id in file</th><th>Row #</th></tr>`;
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td style="color:var(--error);">${escapeHtml(String(r.record_id))}</td><td>${r.row_number ?? '—'}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    table.appendChild(thead);
+    table.appendChild(tbody);
+  }
+
+  // ── Preview ──
+  btnPreview.addEventListener('click', async () => {
+    if (!currentFile) return;
+    btnPreview.disabled = true;
+    previewSpinner.classList.remove('hidden');
+    const fd = new FormData();
+    fd.append('file', currentFile);
+    fd.append('mode', getMode());
+    try {
+      const res = await fetch(`${API}/api/events/import/preview`, { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        showToast(err.detail || 'Preview failed', 'error');
+        return;
+      }
+      currentDiff = await res.json();
+      renderChips(currentDiff.summary);
+      renderDiffTabs(currentDiff);
+      goToStep(2);
+    } catch (e) {
+      showToast('Preview failed: ' + e.message, 'error');
+    } finally {
+      btnPreview.disabled = false;
+      previewSpinner.classList.add('hidden');
+    }
+  });
+
+  // ── Back ──
+  btnBack.addEventListener('click', () => goToStep(1));
+
+  // ── Apply ──
+  btnApply.addEventListener('click', async () => {
+    if (!currentFile) return;
+    btnApply.disabled = true;
+    applySpinner.classList.remove('hidden');
+    const fd = new FormData();
+    fd.append('file', currentFile);
+    fd.append('mode', getMode());
+    try {
+      const res = await fetch(`${API}/api/events/import/apply`, { method: 'POST', body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        showToast(err.detail || 'Import failed', 'error');
+        return;
+      }
+      const data = await res.json();
+      // Step 3 — Done
+      const counts = data.applied || {};
+      const lines = [
+        counts.updated  ? `✏ <strong>${counts.updated}</strong> records updated`  : null,
+        counts.inserted ? `+ <strong>${counts.inserted}</strong> records inserted` : null,
+        counts.removed  ? `✕ <strong>${counts.removed}</strong> records hidden`   : null,
+      ].filter(Boolean);
+      document.getElementById('import-done-counts').innerHTML = lines.length ? lines.join('<br>') : 'No changes were applied.';
+      document.getElementById('import-done-backup').innerHTML =
+        `🛡 Safety backup saved to:<br><code>${escapeHtml(data.backup_path || '')}</code>`;
+      goToStep(3);
+    } catch (e) {
+      showToast('Import failed: ' + e.message, 'error');
+    } finally {
+      btnApply.disabled = false;
+      applySpinner.classList.add('hidden');
+    }
+  });
+
+  // ── Done ──
+  btnDone.addEventListener('click', () => {
+    closeModal();
+    loadResults();
+  });
+})();
 
 // ── Job History ──────────────────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@ import sys
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Body
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Body, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,11 +21,14 @@ from backend.storage.db import (
     delete_session, get_session_for_domain,
     list_groups, get_group, get_group_schedules
 )
-from backend.storage.exporter import export_to_csv, export_to_xlsx
+from backend.storage.exporter import (
+    export_to_csv, export_to_xlsx,
+    parse_import_file, compute_import_diff, apply_import as apply_import_diff,
+)
 from backend.storage.monitor import (
     get_stats, cleanup_html_cache_older_than, cleanup_html_cache_larger_than,
     cleanup_events_older_than, compress_html_caches, export_full_backup,
-    delete_job_cache
+    delete_job_cache, backup_db_for_import
 )
 from backend.jobs.manager import (
     start_job, pause_job, resume_job_control, cancel_job,
@@ -197,13 +200,15 @@ def parse_event_filters(
     has_email: bool | None = None,
     has_phone: bool | None = None,
     sort_by: str | None = None,
-    sort_dir: str | None = None
+    sort_dir: str | None = None,
+    show_hidden: str | None = None,
 ) -> dict:
     return {
         "job_ids": job_ids or job_id, "updated_by_job_id": updated_by_job_id, "date_from": date_from, "date_to": date_to,
         "city": city, "keyword": keyword, "contact_hidden": contact_hidden, "has_contact": has_contact,
         "has_email": has_email, "has_phone": has_phone,
-        "sort_by": sort_by, "sort_dir": sort_dir
+        "sort_by": sort_by, "sort_dir": sort_dir,
+        "show_hidden": show_hidden or 'no',
     }
 
 @app.get("/api/events")
@@ -216,9 +221,10 @@ async def get_events_route(
     keyword: str | None = None, contact_hidden: bool | None = None,
     has_contact: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
-    sort_by: str | None = None, sort_dir: str | None = None
+    sort_by: str | None = None, sort_dir: str | None = None,
+    show_hidden: str | None = None,
 ):
-    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir, show_hidden)
     events, total = await query_events(filters, page, per_page)
     return {"events": events, "total": total, "page": page, "per_page": per_page}
 
@@ -236,9 +242,10 @@ async def export_csv_route(
     keyword: str | None = None, contact_hidden: bool | None = None,
     has_contact: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
-    sort_by: str | None = None, sort_dir: str | None = None
+    sort_by: str | None = None, sort_dir: str | None = None,
+    show_hidden: str | None = None
 ):
-    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir, show_hidden)
     return await export_to_csv(filters)
 
 @app.get("/api/events/export/xlsx")
@@ -250,10 +257,56 @@ async def export_xlsx_route(
     keyword: str | None = None, contact_hidden: bool | None = None,
     has_contact: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
-    sort_by: str | None = None, sort_dir: str | None = None
+    sort_by: str | None = None, sort_dir: str | None = None,
+    show_hidden: str | None = None
 ):
-    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir, show_hidden)
     return await export_to_xlsx(filters)
+
+# API Routes - Import
+@app.post("/api/events/import/preview")
+async def import_preview_route(
+    file: UploadFile = File(...),
+    mode: str = Form('partial'),
+):
+    """Parse the uploaded file and return a diff preview without committing anything."""
+    if mode not in ('partial', 'full'):
+        raise HTTPException(400, "mode must be 'partial' or 'full'")
+    file_bytes = await file.read()
+    try:
+        df = parse_import_file(file_bytes, file.filename or 'upload.csv')
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    diff = await compute_import_diff(df, mode)
+    # Strip internal data before sending to client
+    return {
+        'mode': diff['mode'],
+        'summary': diff['summary'],
+        'rows': diff['rows'],
+    }
+
+@app.post("/api/events/import/apply")
+async def import_apply_route(
+    file: UploadFile = File(...),
+    mode: str = Form('partial'),
+):
+    """Re-parse the file, take a DB backup, then apply the diff."""
+    if mode not in ('partial', 'full'):
+        raise HTTPException(400, "mode must be 'partial' or 'full'")
+    file_bytes = await file.read()
+    try:
+        df = parse_import_file(file_bytes, file.filename or 'upload.csv')
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    backup_path = await backup_db_for_import()
+    diff = await compute_import_diff(df, mode)
+    applied = await apply_import_diff(diff)
+    return {
+        'backup_path': backup_path,
+        'applied': applied,
+    }
 
 # API Routes - Schedules
 @app.post("/api/schedule")

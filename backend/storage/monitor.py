@@ -189,6 +189,37 @@ async def delete_job_cache(job_id: str) -> dict:
         shutil.rmtree(job_dir)
     return {"freed_bytes": freed_bytes}
 
+IMPORT_BACKUPS_DIR = DATA_DIR / 'exports' / 'import_backups'
+MAX_IMPORT_BACKUPS = 10
+
+async def backup_db_for_import() -> str:
+    """Snapshot the live SQLite DB to the import_backups folder.
+
+    Keeps at most MAX_IMPORT_BACKUPS files; oldest are removed first.
+    Returns the path of the new backup file.
+    """
+    import asyncio
+
+    IMPORT_BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    backup_path = IMPORT_BACKUPS_DIR / f"backup_{timestamp}.db"
+
+    db_source = DATA_DIR / 'lmscraper.db'
+    await asyncio.to_thread(shutil.copy2, str(db_source), str(backup_path))
+
+    # Enforce retention limit: keep only the N most-recent backups
+    existing = sorted(IMPORT_BACKUPS_DIR.glob('backup_*.db'), key=lambda p: p.stat().st_mtime)
+    while len(existing) > MAX_IMPORT_BACKUPS:
+        oldest = existing.pop(0)
+        try:
+            oldest.unlink()
+        except OSError:
+            pass
+
+    return str(backup_path)
+
+
 async def purge_all() -> dict:
     """Delete ALL events, jobs, and clear the HTML cache completely."""
     freed_bytes = 0

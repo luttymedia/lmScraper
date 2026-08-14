@@ -1,9 +1,21 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "1.7.0"
+VERSION = "1.8.0"
 RELEASE_DATE = "2026-08-14"
 
 CHANGELOG = [
+    {
+        "version": "1.8.0",
+        "date": "2026-08-14",
+        "title": "Import / Export Synchronization System",
+        "changes": [
+            "Implemented CSV/XLSX file import with interactive 3-step wizard (Upload -> Preview Diff -> Apply)",
+            "Added Partial import (safe updates for subsets) and Complete import (full sync with absent row hiding) modes",
+            "Added full diff preview breakdown highlighting field-level changes, inserted records, and hidden items",
+            "Implemented automatic pre-import SQLite database snapshots stored in data/exports/import_backups/",
+            "Enhanced date parser & boolean normalizer for seamless roundtrip import/export compatibility"
+        ]
+    },
     {
         "version": "1.7.0",
         "date": "2026-08-14",

@@ -99,7 +99,7 @@
     <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom: 8px;">
       <h1 style="margin:0;">LMScraper</h1>
       <button class="badge badge-done" id="btn-version" title="View Version & Changelog"
-        style="cursor: pointer; border: none; font-weight: 600; padding: 4px 8px; font-size: 0.75rem;">v1.2.0</button>
+        style="cursor: pointer; border: none; font-weight: 600; padding: 4px 8px; font-size: 0.75rem;">v1.3.0</button>
     </div>
     <nav>
       <a href="#" class="nav-item active" data-target="section-new-job">
@@ -174,10 +174,13 @@
             <div style="position: relative; display: flex; align-items: center;">
               <input type="url" id="job-url" class="input btn-lg" value="https://www.goandance.com/en/events"
                 placeholder="https://www.goandance.com/en/events"
-                data-tooltip="Enter the full URL of an event listing page" style="padding-right: 80px; width: 100%;">
+                data-tooltip="Enter the full URL of an event listing page" style="padding-right: 110px; width: 100%;">
               <div style="position: absolute; right: 10px; display: flex; align-items: center; gap: 4px;">
                 <button type="button" id="btn-copy-url" class="icon-btn" title="Copy Target URL">
                   <i data-lucide="copy"></i>
+                </button>
+                <button type="button" id="btn-open-url" class="icon-btn" title="Open Target URL in new tab">
+                  <i data-lucide="external-link"></i>
                 </button>
                 <button type="button" id="btn-clear-url" class="icon-btn" title="Clear Target URL">
                   <i data-lucide="x"></i>
@@ -465,10 +468,13 @@
             <label>Target URL</label>
             <div style="position: relative; display: flex; align-items: center;">
               <input type="url" id="sched-url" class="input" value="https://www.goandance.com/en/events"
-                placeholder="https://www.goandance.com/en/events" style="padding-right: 80px; width: 100%;">
+                placeholder="https://www.goandance.com/en/events" style="padding-right: 110px; width: 100%;">
               <div style="position: absolute; right: 10px; display: flex; align-items: center; gap: 4px;">
                 <button type="button" id="btn-copy-sched-url" class="icon-btn" title="Copy Target URL">
                   <i data-lucide="copy"></i>
+                </button>
+                <button type="button" id="btn-open-sched-url" class="icon-btn" title="Open Target URL in new tab">
+                  <i data-lucide="external-link"></i>
                 </button>
                 <button type="button" id="btn-clear-sched-url" class="icon-btn" title="Clear Target URL">
                   <i data-lucide="x"></i>
@@ -688,7 +694,7 @@
         <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--success); margin: 0;">LMScraper</h2>
         <div style="margin-top: 6px;">
           <span id="version-modal-tag"
-            style="display: inline-block; font-family: var(--font-mono); font-size: 0.78rem; padding: 3px 14px; border-radius: 9999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-secondary);">v1.2.0</span>
+            style="display: inline-block; font-family: var(--font-mono); font-size: 0.78rem; padding: 3px 14px; border-radius: 9999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-secondary);">v1.3.0</span>
         </div>
       </div>
 

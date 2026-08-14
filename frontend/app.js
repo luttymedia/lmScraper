@@ -247,7 +247,7 @@ function syncUrlToGadLanguage(url, langRadiosName) {
   } catch (e) {}
 }
 
-function setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, locationInput, locationSuggestions, langRadiosName, copyBtn, clearBtn) {
+function setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, locationInput, locationSuggestions, langRadiosName, copyBtn, clearBtn, openBtn) {
   if (!urlInput) return;
 
   function getActiveBaseUrl() {
@@ -302,7 +302,7 @@ function setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, location
     });
   });
 
-  // Copy & Clear URL buttons
+  // Copy, Clear & Open URL buttons
   copyBtn?.addEventListener('click', async () => {
     const val = urlInput.value.trim();
     if (!val) {
@@ -321,6 +321,15 @@ function setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, location
       document.body.removeChild(ta);
       showToast('URL copied to clipboard', 'success');
     }
+  });
+
+  openBtn?.addEventListener('click', () => {
+    const val = urlInput.value.trim();
+    if (!val) {
+      showToast('Target URL is empty', 'warning');
+      return;
+    }
+    window.open(val, '_blank');
   });
 
   clearBtn?.addEventListener('click', () => {
@@ -463,8 +472,9 @@ const locationInput = document.getElementById('job-location');
 const locationSuggestions = document.getElementById('job-location-suggestions');
 const btnCopyUrl = document.getElementById('btn-copy-url');
 const btnClearUrl = document.getElementById('btn-clear-url');
+const btnOpenUrl = document.getElementById('btn-open-url');
 
-setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, locationInput, locationSuggestions, 'job_gad_lang', btnCopyUrl, btnClearUrl);
+setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, locationInput, locationSuggestions, 'job_gad_lang', btnCopyUrl, btnClearUrl, btnOpenUrl);
 
 // Bind for Scheduler
 const schedUrlInput = document.getElementById('sched-url');
@@ -475,8 +485,9 @@ const schedLocationInput = document.getElementById('sched-city');
 const schedLocationSuggestions = document.getElementById('sched-city-suggestions');
 const btnCopySchedUrl = document.getElementById('btn-copy-sched-url');
 const btnClearSchedUrl = document.getElementById('btn-clear-sched-url');
+const btnOpenSchedUrl = document.getElementById('btn-open-sched-url');
 
-setupUrlSync(schedUrlInput, schedStyleInput, schedDateFromInput, schedDateToInput, schedLocationInput, schedLocationSuggestions, 'sched_gad_lang', btnCopySchedUrl, btnClearSchedUrl);
+setupUrlSync(schedUrlInput, schedStyleInput, schedDateFromInput, schedDateToInput, schedLocationInput, schedLocationSuggestions, 'sched_gad_lang', btnCopySchedUrl, btnClearSchedUrl, btnOpenSchedUrl);
 
 // ── Smart Job Nicknames ──────────────────────────────────────────────────────
 

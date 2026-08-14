@@ -1,9 +1,18 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 RELEASE_DATE = "2026-08-14"
 
 CHANGELOG = [
+    {
+        "version": "1.3.0",
+        "date": "2026-08-14",
+        "title": "Pagination Reliability & Duplicate Job Optimization",
+        "changes": [
+            "Fixed pagination issue during jobs",
+            "Optimized jobs to skip duplicated events"
+        ]
+    },
     {
         "version": "1.2.0",
         "date": "2026-08-14",

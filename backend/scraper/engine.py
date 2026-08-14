@@ -1,10 +1,10 @@
 """The universal 3-level async scraping engine."""
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Page, BrowserContext
 from datetime import datetime
 
@@ -118,33 +118,152 @@ async def emit(queue: asyncio.Queue, event: dict) -> None:
     if queue:
         await queue.put(event)
 
-async def auto_scroll(page: Page, max_scrolls: int = 25, check_state=None) -> None:
-    """Scroll down and click 'Load more' buttons to load dynamic content."""
-    # Dismiss cookie banner if present so it doesn't obstruct clicks
+async def _parse_showing_counter(page: Page) -> tuple[int, int]:
+    """Parse 'Showing X of Y' / 'Mostrando X de Y' counter text.
+    Targets the confirmed GoAndDance DOM: div.list-show-more > div.counter
+    Falls back to a full-body text scan.
+    Returns (shown, total). Both are 0 if not found."""
     try:
-        cookie_btn = page.locator('button:has-text("Aceptar"), #onetrust-accept-btn-handler, .cookie-accept')
+        # Primary: read the exact counter element GoAndDance uses
+        counter_el = page.locator('.list-show-more .counter')
+        if await counter_el.count() > 0:
+            text = await counter_el.first.inner_text()
+            m = re.search(r'(\d+)\s+(?:of|de)\s+(\d+)', text, re.I)
+            if m:
+                return int(m.group(1)), int(m.group(2))
+    except Exception:
+        pass
+    try:
+        # Fallback: scan body text for the pattern
+        text = await page.evaluate(r"""
+            () => {
+                const all = document.querySelectorAll('*');
+                for (const el of all) {
+                    if (el.children.length === 0) continue;
+                    const t = el.innerText || '';
+                    if (/showing\s+\d+\s+of\s+\d+/i.test(t) || /mostrando\s+\d+\s+de\s+\d+/i.test(t)) {
+                        return t;
+                    }
+                }
+                return '';
+            }
+        """)
+        m = re.search(r'(?:showing|mostrando)\s+(\d+)\s+(?:of|de)\s+(\d+)', text, re.I)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    except Exception:
+        pass
+    return 0, 0
+
+async def auto_scroll(page: Page, check_state=None, emit_log=None) -> None:
+    """Scroll down and repeatedly click the GoAndDance 'Load more' button
+    (button.button-gradient.button-lg inside div.list-show-more) until all
+    events are loaded. Uses the div.counter text ('Showing X of Y') to know
+    when to stop."""
+
+    async def _log(msg: str):
+        logger.info(msg)
+        if emit_log:
+            await emit_log(msg)
+
+    # Dismiss cookie banner if present so it doesn't obstruct clicks.
+    # GoAndDance confirmed cookie modal (inspected via DevTools):
+    #   <div role="dialog" aria-modal="true" class="fade notranslate dark-modal modal show">
+    #     <div class="modal-footer">
+    #       <button class="button-gradient button-md">  ← Accept  (button-md distinguishes from Load More which uses button-lg)
+    #       <button class="link-gradient button-md">    ← Settings
+    #     </div>
+    #   </div>
+    try:
+        cookie_btn = page.locator(
+            '[role="dialog"][aria-modal="true"] .modal-footer button.button-gradient, '
+            '#onetrust-accept-btn-handler, .cookie-accept'
+        )
         if await cookie_btn.count() > 0 and await cookie_btn.first.is_visible():
-            await cookie_btn.first.click(timeout=2000)
+            await cookie_btn.first.click(timeout=3000)
             await asyncio.sleep(0.5)
-    except:
+    except Exception:
         pass
 
-    for _ in range(max_scrolls):
-        if check_state: await check_state()
+    # GoAndDance confirmed DOM structure (inspected via DevTools):
+    #   <div class="list-show-more">          ← container (also has js-load-more on outer wrapper)
+    #     <div class="counter">Showing 17 of 43</div>
+    #     <div class="show-more-area with-bar">
+    #       <button class="button-gradient button-lg">
+    #         <span class="button-content">Load more</span>   ← EN
+    #         (or "Cargar más" on ES pages — same classes, same structure)
+    #       </button>
+    #     </div>
+    #   </div>
+    #
+    # We target the button by its container (.list-show-more button) so the
+    # selector works for both English and Spanish without text matching.
+    BUTTON_SEL = '.list-show-more button'
+
+    clicks = 0
+    no_button_retries = 0
+    MAX_NO_BUTTON_RETRIES = 6   # give it 6 scroll+wait cycles before giving up
+    SAFETY_CAP = 500            # absolute maximum clicks to avoid infinite loops
+
+    # --- First pass: read total via the exact counter element ---
+    shown, total = await _parse_showing_counter(page)
+    if total > 0:
+        await _log(f"Load-more loop started: showing {shown} of {total} events.")
+    else:
+        await _log("Load-more loop started (no counter found, will run until button disappears).")
+
+    while clicks < SAFETY_CAP:
+        if check_state:
+            await check_state()
+
+        # Scroll to the very bottom so the load-more section enters the viewport
         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        await asyncio.sleep(0.8)
-        
-        if check_state: await check_state()
-        # Check for 'Cargar más' / 'Load more' button
-        try:
-            more_btn = page.locator('button:has-text("Cargar más"), .list-show-more button, .js-load-more, .list-show-more, [class*="load-more"], button:has-text("Load more")')
-            if await more_btn.count() > 0 and await more_btn.first.is_visible():
-                await more_btn.first.click(timeout=3000)
-                await asyncio.sleep(1.2)
-            else:
-                break
-        except Exception:
+        await asyncio.sleep(1.2)
+
+        # Re-read counter — exit as soon as all events are shown
+        shown, total = await _parse_showing_counter(page)
+        if total > 0 and shown >= total:
+            await _log(f"All {total} events loaded. Stopping load-more loop.")
             break
+
+        if check_state:
+            await check_state()
+
+        # Locate the button using the confirmed class hierarchy
+        btn = page.locator(BUTTON_SEL)
+        try:
+            btn_count = await btn.count()
+        except Exception:
+            btn_count = 0
+
+        if btn_count > 0:
+            try:
+                # Scroll it into view then click
+                await btn.first.scroll_into_view_if_needed(timeout=3000)
+                await asyncio.sleep(0.3)
+                await btn.first.click(timeout=5000)
+                clicks += 1
+                no_button_retries = 0
+                # Wait for new batch of events to render
+                await asyncio.sleep(2.0)
+                shown_after, total_after = await _parse_showing_counter(page)
+                label = f"{shown_after} of {total_after}" if total_after > 0 else "?"
+                await _log(f"Load more clicked ({clicks}x) – showing {label} events")
+            except Exception as e:
+                logger.warning(f"Load more click failed: {e}")
+                no_button_retries += 1
+                if no_button_retries >= MAX_NO_BUTTON_RETRIES:
+                    await _log("Load more button present but unclickable after retries. Stopping.")
+                    break
+                await asyncio.sleep(1.0)
+        else:
+            # Button not in DOM — either all events loaded, or page not ready yet
+            no_button_retries += 1
+            if no_button_retries >= MAX_NO_BUTTON_RETRIES:
+                await _log("Load more button not found after retries. Assuming all events loaded.")
+                break
+            await _log(f"Load more button not in DOM yet, retrying ({no_button_retries}/{MAX_NO_BUTTON_RETRIES})...")
+            await asyncio.sleep(1.5)
 
 async def process_listing_page(page: Page, config: ScraperConfig, scraper: BaseScraper) -> list[str]:
     """Process a single listing page and extract detail URLs."""
@@ -246,11 +365,12 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
                 
             # Attempt to find pagination or scroll
             detail_urls = set()
-            html = await page.content()
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            await emit(progress_queue, {"type": "log", "level": "info", "message": "Scrolling page to load dynamic content..."})
-            await auto_scroll(page, check_state=check_state)
+
+            async def _emit_log(msg: str):
+                await emit(progress_queue, {"type": "log", "level": "info", "message": msg})
+
+            await emit(progress_queue, {"type": "log", "level": "info", "message": "Scrolling page and loading all events (clicking Load More until done)..."})
+            await auto_scroll(page, check_state=check_state, emit_log=_emit_log)
             
             scraper = get_scraper(config.platform)
             urls = await process_listing_page(page, config, scraper)
@@ -288,15 +408,14 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
                     if inserted_id:
                         stats["events_new"] += 1
                         status_label = "new"
+                        if prof:
+                            profile_urls.add(prof)
+                            await emit(progress_queue, {"type": "log", "level": "info", "message": f"   └─ Found organizer profile: {prof}"})
                     else:
                         stats["events_skipped"] += 1
                         status_label = "duplicate"
                     title = event.get('title') or url
                     await emit(progress_queue, {"type": "log", "level": "info", "message": f"[{i}/{total}] Scraped: {title[:40]} ({status_label})"})
-                    
-                    if prof:
-                        profile_urls.add(prof)
-                        await emit(progress_queue, {"type": "log", "level": "info", "message": f"   └─ Found organizer profile: {prof}"})
                         
                     await emit(progress_queue, {
                         "type": "progress", "phase": 2, 

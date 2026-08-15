@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono&display=swap"
     rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
-  <link rel="stylesheet" href="style.css?v=46">
+  <link rel="stylesheet" href="style.css?v=52">
   <style>
     .multiselect-list {
       display: flex !important;
@@ -115,7 +115,7 @@
         <h1 style="margin:0;">LMScraper</h1>
       </div>
       <button class="badge badge-done" id="btn-version" title="View Version & Changelog"
-        style="cursor: pointer; border: none; font-weight: 600; padding: 4px 8px; font-size: 0.75rem; text-transform: none;">v1.8.0</button>
+        style="cursor: pointer; border: none; font-weight: 600; padding: 4px 8px; font-size: 0.75rem; text-transform: none;">v2.0.0</button>
     </div>
     <nav>
       <a href="#" class="nav-item active" data-target="section-new-job">
@@ -397,15 +397,16 @@
           <option value="all">Show All</option>
           <option value="only">Only Hidden</option>
         </select>
-        <button class="btn btn-primary btn-sm" id="btn-apply-filters">Apply</button>
-        <button class="btn btn-ghost btn-sm" id="btn-reset-filters">Reset</button>
-
-        <div style="position: relative; margin-left: auto;">
-          <button class="btn btn-secondary btn-sm" id="btn-toggle-columns"><i data-lucide="sliders-horizontal"
-              class="icon-sm"></i> Columns</button>
-          <div id="column-visibility-panel" class="card hidden"
-            style="position: absolute; right: 0; top: 100%; margin-top: 8px; z-index: 20; min-width: 200px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-            <!-- populated by JS -->
+        <div class="filter-actions-row">
+          <button class="btn btn-primary btn-sm" id="btn-apply-filters">Apply</button>
+          <button class="btn btn-ghost btn-sm" id="btn-reset-filters">Reset</button>
+          <div style="position: relative; margin-left: auto;">
+            <button class="btn btn-secondary btn-sm" id="btn-toggle-columns"><i data-lucide="sliders-horizontal"
+                class="icon-sm"></i> Columns</button>
+            <div id="column-visibility-panel" class="card hidden"
+              style="position: absolute; right: 0; top: 100%; margin-top: 8px; z-index: 20; min-width: 200px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+              <!-- populated by JS -->
+            </div>
           </div>
         </div>
       </div>
@@ -460,10 +461,12 @@
           <option value="scheduled">Scheduled Only</option>
           <option value="manual">Manual Only</option>
         </select>
-        <button class="btn btn-primary btn-sm" id="jh-btn-apply">Apply</button>
-        <button class="btn btn-ghost btn-sm" id="jh-btn-clear">Reset</button>
-        <span id="jh-results-count"
-          style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 4px; white-space: nowrap;"></span>
+        <div class="filter-actions-row">
+          <button class="btn btn-primary btn-sm" id="jh-btn-apply">Apply</button>
+          <button class="btn btn-ghost btn-sm" id="jh-btn-clear">Reset</button>
+          <span id="jh-results-count"
+            style="font-size: 0.85rem; color: var(--text-secondary); margin-left: 4px; white-space: nowrap;"></span>
+        </div>
       </div>
 
       <div id="job-history-list" class="grid grid-cols-2">
@@ -893,7 +896,7 @@
         </div>
         <div>
           <span id="version-modal-tag"
-            style="display: inline-block; font-family: var(--font-mono); font-size: 0.78rem; padding: 3px 14px; border-radius: 9999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-secondary);">v1.8.0</span>
+            style="display: inline-block; font-family: var(--font-mono); font-size: 0.78rem; padding: 3px 14px; border-radius: 9999px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-secondary);">v2.0.0</span>
         </div>
       </div>
 

@@ -1,9 +1,21 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "1.9.0"
-RELEASE_DATE = "2026-08-14"
+VERSION = "2.0.0"
+RELEASE_DATE = "2026-08-15"
 
 CHANGELOG = [
+    {
+        "version": "2.0.0",
+        "date": "2026-08-15",
+        "title": "Mobile Responsiveness & Remote Access",
+        "changes": [
+            "Comprehensive mobile UI optimization for New Job, Job History, Results, and Scheduler tabs",
+            "Restructured Job History cards, filters, and action buttons for seamless mobile view without horizontal scrolling",
+            "Redesigned Schedule Group cards into clean multi-row component layout with status indicators and pill metadata",
+            "Repositioned mobile navigation menu trigger and aligned search/filter action rows",
+            "Added mobile remote access tunnel support for remote monitoring"
+        ]
+    },
     {
         "version": "1.9.0",
         "date": "2026-08-14",

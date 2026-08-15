@@ -1,4 +1,4 @@
-const API = 'http://localhost:8000';
+const API = window.location.origin;
 
 // ── SVG Outline Icons ────────────────────────────────────────────────────────
 
@@ -1569,11 +1569,11 @@ function renderJobHistory() {
         <span class="badge badge-${job.status}">${job.status}</span>
       </div>
 
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--surface-elevated); border:1px solid var(--border); border-radius:8px; padding:7px 10px; margin-bottom:12px; font-family:'JetBrains Mono', monospace; font-size:0.8rem;">
-        <a href="${job.url}" target="_blank" style="color:var(--text-primary); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${job.url}">
+      <div class="jh-url-box">
+        <a href="${job.url}" target="_blank" title="${job.url}">
           ${job.url}
         </a>
-        <div style="display:inline-flex; gap:4px; flex-shrink:0; align-items:center;">
+        <div class="jh-url-actions">
           <button class="icon-btn" onclick="copyJobUrl('${escapeJs(job.url)}')" title="Copy Full Target URL" style="padding:3px; color:var(--text-secondary);">
             ${ICONS.copy}
           </button>
@@ -1584,23 +1584,23 @@ function renderJobHistory() {
       </div>
 
       ${filterHtml}
-      <div style="display:flex; align-items:center; gap:14px; font-size:0.8rem; color:var(--text-secondary); margin-bottom:14px;">
+      <div class="jh-stats" style="display:flex; align-items:center; gap:14px; font-size:0.8rem; color:var(--text-secondary); margin-bottom:14px;">
         <div>Events found: <strong style="color:var(--text-primary)">${job.events_found || 0}</strong></div>
-        <div style="color:var(--border); font-size:0.7rem;">•</div>
+        <div class="jh-stats-sep" style="color:var(--border); font-size:0.7rem;">•</div>
         <div>New: <strong style="color:var(--success)">${job.events_new || 0}</strong></div>
-        <div style="color:var(--border); font-size:0.7rem;">•</div>
+        <div class="jh-stats-sep" style="color:var(--border); font-size:0.7rem;">•</div>
         <div>Updated: ${job.events_updated > 0 ? `<a href="#" onclick="viewJobUpdates('${job.id}'); return false;" style="color:var(--accent); font-weight:bold; text-decoration:none;" title="View updated events for this job">${job.events_updated}</a>` : `<strong style="color:var(--accent)">0</strong>`}</div>
-        <div style="color:var(--border); font-size:0.7rem;">•</div>
+        <div class="jh-stats-sep" style="color:var(--border); font-size:0.7rem;">•</div>
         <div>Duration: <strong style="color:var(--text-primary)">${durationStr}</strong></div>
       </div>
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap;">
-        <button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="viewJobResults('${job.id}')">${ICONS.chart} View Results</button>
+        <button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="viewJobResults('${job.id}')">${ICONS.chart} <span class="jh-btn-label">View Results</span></button>
         ${job.status === 'running' || job.status === 'pending'
-          ? `<button class="btn btn-danger btn-sm" style="white-space:nowrap; background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;" onclick="cancelJobHistory('${job.id}')">${ICONS.pause} Stop</button>`
-          : `<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="rerunJob('${job.id}')">${ICONS.repeat} Rerun</button>`
+          ? `<button class="btn btn-danger btn-sm" style="white-space:nowrap; background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;" onclick="cancelJobHistory('${job.id}')">${ICONS.pause} <span class="jh-btn-label">Stop</span></button>`
+          : `<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="rerunJob('${job.id}')">${ICONS.repeat} <span class="jh-btn-label">Rerun</span></button>`
         }
-        <button class="btn btn-danger btn-sm" style="white-space:nowrap;" onclick="deleteJob('${job.id}')">${ICONS.trash} Delete</button>
-        <button class="btn btn-secondary btn-sm" style="white-space:nowrap; margin-left:auto;" onclick="viewJobLogs('${job.id}')">${ICONS.terminal} Logs</button>
+        <button class="btn btn-danger btn-sm" style="white-space:nowrap;" onclick="deleteJob('${job.id}')">${ICONS.trash} <span class="jh-btn-label">Delete</span></button>
+        <button class="btn btn-secondary btn-sm" style="white-space:nowrap; margin-left:auto;" onclick="viewJobLogs('${job.id}')">${ICONS.terminal} <span class="jh-btn-label">Logs</span></button>
       </div>
     `;
     container.appendChild(card);
@@ -2352,12 +2352,13 @@ function renderGroups(groups) {
   container.innerHTML = '';
   groups.forEach(g => {
     const card = document.createElement('div');
-    card.style.cssText = 'border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:10px; background:var(--surface-elevated); display:flex; flex-direction:column; gap:10px;';
+    card.className = 'group-card';
+    card.dataset.status = g.status || 'paused';
 
     const total = g.total_schedules || 0;
     const idx = g.current_index || 0;
     const displayIdx = total > 0 ? (idx % total) + 1 : 0;
-    const loopLabel = g.loop_mode === 'once' ? 'One-time' : 'Loops';
+    const loopLabel = g.loop_mode === 'once' ? 'One-time' : 'Loop';
     const intervalLabel = _groupIntervalLabel(g);
 
     let statusClass = 'badge-disabled';
@@ -2365,33 +2366,34 @@ function renderGroups(groups) {
     if (g.status === 'active') statusClass = 'badge-running';
     else if (g.status === 'completed') statusClass = 'badge-done';
 
+    const playPauseBtn = g.status === 'active'
+      ? `<button class="btn btn-secondary btn-sm" onclick="pauseGroup('${g.id}')" title="Pause group" style="color:var(--warning); gap:5px;">${ICONS.pause} Pause</button>`
+      : `<button class="btn btn-secondary btn-sm" onclick="resumeGroup('${g.id}')" title="Start / Resume group" style="color:var(--success); gap:5px;">${ICONS.play} Start</button>`;
+
     card.innerHTML = `
-      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-        <div style="flex:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <strong style="font-size:0.95rem;">${g.name}</strong>
-            <span class="badge ${statusClass}">${statusText}</span>
-            <span class="badge badge-pending" style="font-size:0.72rem;">${loopLabel}</span>
-            <span class="badge badge-pending" style="font-size:0.72rem;">${intervalLabel}</span>
-          </div>
-          <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">
-            ${total} schedule${total !== 1 ? 's' : ''}
-            ${total > 0 ? `· Step <strong>${displayIdx}</strong>/${total}` : ''}
-            ${g.current_schedule_label ? `· Next: <em>${g.current_schedule_label}</em>` : ''}
-          </div>
-          ${g.last_triggered_at ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Last fired: ${formatDate(g.last_triggered_at)}</div>` : ''}
-          ${g.start_time ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Scheduled start: ${formatLocalDate(g.start_time)}</div>` : ''}
-        </div>
-        <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
-          ${g.status === 'active'
-            ? `<button class="btn btn-secondary btn-sm" onclick="pauseGroup('${g.id}')" title="Pause group" style="color:var(--warning);">${ICONS.pause}</button>`
-            : `<button class="btn btn-secondary btn-sm" onclick="resumeGroup('${g.id}')" title="Start / Resume group" style="color:var(--success);">${ICONS.play}</button>`
-          }
-          <button class="btn btn-secondary btn-sm" onclick="openGroupMembersModal('${g.id}')" title="View & Reorder members" style="color:var(--primary-light);">${ICONS.list}</button>
-          <button class="btn btn-secondary btn-sm" onclick="openAssignModal('${g.id}', '${g.name.replace(/'/g,"\\\'")}')" title="Assign schedules">${ICONS.plus}</button>
-          <button class="btn btn-secondary btn-sm" onclick="resetGroup('${g.id}')" title="Reset progress to step 1">${ICONS.refreshCw}</button>
-          <button class="btn btn-secondary btn-sm" onclick="editGroup('${g.id}')" title="Edit group">${ICONS.edit}</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteGroup('${g.id}')" title="Delete group">${ICONS.trash}</button>
+      <div class="group-card-header">
+        <span class="group-card-name" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</span>
+        <span class="badge ${statusClass}">${statusText}</span>
+      </div>
+      <div class="group-card-meta">
+        <span class="group-card-meta-pill">${total} schedule${total !== 1 ? 's' : ''}</span>
+        ${total > 0 ? `<span class="group-card-meta-pill accent">Step ${displayIdx}/${total}</span>` : ''}
+        <span class="group-card-meta-pill">${loopLabel}</span>
+        <span class="group-card-meta-pill">${intervalLabel}</span>
+        ${g.current_schedule_label ? `<span class="group-card-next">&#9654; ${escapeHtml(g.current_schedule_label)}</span>` : ''}
+      </div>
+      ${(g.last_triggered_at || g.start_time) ? `<div style="display:flex;flex-wrap:wrap;gap:10px;font-size:0.75rem;color:var(--text-muted);margin-bottom:10px;">
+        ${g.last_triggered_at ? `<span>Last fired: <strong style="color:var(--text-secondary);">${formatDate(g.last_triggered_at)}</strong></span>` : ''}
+        ${g.start_time ? `<span>Starts: <strong style="color:var(--text-secondary);">${formatLocalDate(g.start_time)}</strong></span>` : ''}
+      </div>` : ''}
+      <div class="group-card-actions">
+        ${playPauseBtn}
+        <button class="btn btn-secondary btn-sm" onclick="openGroupMembersModal('${g.id}')" title="View &amp; Reorder members" style="gap:5px;">${ICONS.list} Members</button>
+        <button class="btn btn-secondary btn-sm" onclick="openAssignModal('${g.id}', '${g.name.replace(/'/g, "\'")}')" title="Assign schedules" style="gap:5px;">${ICONS.plus} Assign</button>
+        <div style="margin-left:auto;display:flex;gap:6px;">
+          <button class="icon-btn" onclick="resetGroup('${g.id}')" title="Reset progress to step 1">${ICONS.refreshCw}</button>
+          <button class="icon-btn" onclick="editGroup('${g.id}')" title="Edit group">${ICONS.edit}</button>
+          <button class="icon-btn" style="color:var(--error);" onclick="deleteGroup('${g.id}')" title="Delete group">${ICONS.trash}</button>
         </div>
       </div>
     `;

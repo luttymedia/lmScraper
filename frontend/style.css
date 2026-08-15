@@ -773,6 +773,15 @@ tr:last-child td {
   border-radius: var(--radius-card);
 }
 
+/* Row of action controls (Apply / Reset / Columns) inside a filter bar */
+.filter-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  width: 100%;        /* always take the full bar width */
+}
+
 /* Tags */
 .tag {
   display: inline-block;
@@ -872,7 +881,146 @@ tr:last-child td {
   to { transform: translateX(0); opacity: 1; }
 }
 
+/* ── Schedule Group Cards ───────────────────────────────── */
+.group-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-elevated);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  overflow: hidden;
+}
+
+.group-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+/* Status accent strip on the left */
+.group-card[data-status="active"] {
+  border-left: 3px solid var(--success);
+}
+
+.group-card[data-status="completed"] {
+  border-left: 3px solid rgba(74, 222, 128, 0.35);
+}
+
+.group-card[data-status="paused"],
+.group-card[data-status="disabled"] {
+  border-left: 3px solid var(--text-muted);
+}
+
+/* Row 1: name + status badges */
+.group-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
+.group-card-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+/* Row 2: meta info pills */
+.group-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.group-card-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.group-card-meta-pill.accent {
+  color: var(--success);
+  border-color: rgba(52, 211, 153, 0.25);
+  background: rgba(52, 211, 153, 0.07);
+}
+
+.group-card-next {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Row 3: action buttons */
+.group-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 2px;
+}
+
+/* ── Job History URL box fix ────────────────────────────── */
+.jh-url-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  margin-bottom: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.jh-url-box a {
+  color: var(--text-primary);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.jh-url-actions {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
 /* Responsive */
+
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
@@ -889,16 +1037,423 @@ tr:last-child td {
     left: 0;
   }
   .mobile-nav-toggle {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 20;
-    background: var(--accent);
-    color: #000;
-    border: none;
-    border-radius: 50%;
-    width: 48px;
+    top: 12px;
+    right: 12px;
+    z-index: 100;
+    background: var(--surface-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: 40px;
+    height: 40px;
+    box-shadow: var(--shadow-drop);
+  }
+
+  /* Push main content down so it doesn't hide under the toggle */
+  .main-content {
+    padding-top: 60px;
+  }
+
+  /* ── General section padding ───────────────────────────── */
+  .section {
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 1.2rem;
+    margin-bottom: 16px;
+  }
+
+  .card {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+
+  /* ── Footer monitor: compact on mobile ─────────────────── */
+  .footer-monitor {
+    padding: 0 16px;
+    height: 52px;
+  }
+
+  .monitor-stats {
+    gap: 12px;
+    font-size: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  /* ── NEW JOB TAB ────────────────────────────────────────── */
+
+  /* Platform + Language row → vertical stack */
+  #section-new-job .card > div[style*="display: flex"][style*="gap: 32px"],
+  #section-new-job .card > div[style*="display:flex"][style*="gap:32px"] {
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+
+  /* Nickname + URL: 2-col grid → single column */
+  #section-new-job .grid[style*="grid-template-columns: 1fr 2fr"],
+  #section-scheduler .grid[style*="grid-template-columns: 1fr 2fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* 5-col date/location grid → 2-col then single */
+  #section-new-job .grid[style*="repeat(5, 1fr)"],
+  #section-scheduler .grid[style*="repeat(5, 1fr)"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  /* Advanced settings: 2-col → single */
+  #advanced-settings.grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Action buttons row: wrap and full-width on very small screens */
+  #section-new-job .card > .mt-4[style*="display: flex"] {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  #section-new-job .card > .mt-4[style*="display: flex"] .btn {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    justify-content: center;
+  }
+
+  /* ── RESULTS TAB ─────────────────────────────────────────── */
+
+  /* Header: stack title row + buttons */
+  #section-results > div[style*="justify-content: space-between"] {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+  }
+
+  #section-results > div > div[style*="display: flex"][style*="gap: 12px"] {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  /* Filter bar: wrap into 2-col grid */
+  #section-results .filter-bar {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    padding: 12px !important;
+  }
+
+  #section-results .filter-bar .input,
+  #section-results .filter-bar .select {
+    width: 100% !important;
+    min-width: 0 !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Keyword + city span one each, date pickers two per row */
+  #filter-keyword,
+  #filter-city {
+    grid-column: span 1 !important;
+  }
+
+  /* Multiselect wrapper: full width */
+  #job-multiselect-wrapper {
+    grid-column: span 2 !important;
+    width: 100% !important;
+  }
+
+  #job-multiselect-btn {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* filter-actions-row always spans the full grid width on mobile */
+  .filter-actions-row {
+    grid-column: span 2 !important;
+    width: 100% !important;
+  }
+
+  /* ── JOB HISTORY TAB ────────────────────────────────────── */
+
+  /* Header row: stack title and Refresh button */
+  #section-job-history > div[style*="justify-content: space-between"] {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* Filter bar: wrap inputs into a responsive 2-col grid */
+  #job-history-filters {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    padding: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  #job-history-filters .input,
+  #job-history-filters .select {
+    width: 100% !important;
+    min-width: 0 !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Search input spans full width */
+  #jh-filter-search {
+    grid-column: span 2 !important;
+  }
+
+  /* results count sits inline in the actions row — no override needed */
+
+  /* Job history card grid → single column */
+  #job-history-list {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Job history cards: prevent all horizontal overflow */
+  #job-history-list .card {
+    overflow: hidden !important;
+    min-width: 0 !important;
+  }
+
+  /* URL bar: truncate properly, don't overflow */
+  #job-history-list .card a[href] {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    display: block !important;
+    max-width: 100% !important;
+  }
+
+  /* Job card action buttons: no wrapping, icon-only on mobile */
+  #job-history-list .card > div[style*="display:flex"][style*="gap:8px"],
+  #job-history-list .card > div[style*="display: flex"][style*="gap: 8px"] {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+  }
+
+  #job-history-list .card .btn {
+    padding: 7px 10px !important;
+    min-width: 0 !important;
+  }
+
+  /* Hide button label text, keep icon — mobile only */
+  #job-history-list .card .btn .jh-btn-label {
+    display: none !important;
+  }
+
+  /* Stats: two lines — Found+New on top, Updated+Duration below */
+  #job-history-list .card .jh-stats {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 4px 12px !important;
+    font-size: 0.8rem !important;
+    margin-bottom: 12px !important;
+  }
+
+  #job-history-list .card .jh-stats-sep {
+    display: none !important;
+  }
+
+  /* ── SCHEDULER TAB ──────────────────────────────────────── */
+
+  /* 2-col form grid → single column */
+  #section-scheduler .grid-cols-2,
+  #section-scheduler .grid[style*="grid-template-columns: 2fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* "span 2" override: no longer needed in single-col */
+  #section-scheduler .form-group[style*="grid-column: span 2"] {
+    grid-column: span 1 !important;
+  }
+
+  /* Platform + Language inside scheduler → vertical */
+  #section-scheduler div[style*="display: flex"][style*="gap: 32px"],
+  #section-scheduler div[style*="display:flex"][style*="gap:32px"] {
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+
+  /* Schedule Timing row: stack cron input, builder btn, summary */
+  #section-scheduler .mt-4 > div[style*="display: flex"][style*="align-items: center"],
+  #section-scheduler .mt-4 > div[style*="display:flex"][style*="align-items:center"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  #section-scheduler .mt-4 > div > div[style*="width: 240px"] {
+    width: 100% !important;
+  }
+
+  /* Create schedule action row */
+  #section-scheduler > .card > div[style*="display: flex"][style*="align-items: center"][style*="margin-top: 24px"],
+  #section-scheduler > .card > div[style*="display:flex"][style*="align-items:center"][style*="margin-top:24px"] {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  /* Schedule Groups header */
+  #schedule-groups-panel > div[style*="display:flex"] {
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  /* Group form: 4-col → 1 col */
+  #group-form-wrapper .grid[style*="grid-template-columns: 2fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Individual Schedules heading row */
+  #section-scheduler > div[style*="display:flex"][style*="justify-content:space-between"],
+  #section-scheduler > div[style*="display: flex"][style*="justify-content: space-between"] {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  /* Schedules table: horizontal scroll container */
+  #section-scheduler .table-wrapper {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    max-height: none !important;
+  }
+
+  /* Shrink table cells for mobile readability */
+  #schedules-table th,
+  #schedules-table td {
+    padding: 8px 10px !important;
+    font-size: 0.78rem !important;
+    white-space: nowrap !important;
+  }
+
+  /* Bulk assign row: wrap */
+  #section-scheduler > div:last-of-type {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  /* ── SAVED SESSIONS TAB ──────────────────────────────────── */
+
+  /* 2-col form grid → single column */
+  #section-sessions .grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Save Session button: full width */
+  #btn-save-session {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Table styling on mobile */
+  #sessions-table th,
+  #sessions-table td {
+    padding: 8px 10px !important;
+    font-size: 0.78rem !important;
+  }
+
+  /* ── DATA MANAGEMENT MODAL ──────────────────────────────── */
+
+  #modal-cleanup .modal {
+    width: 95% !important;
+    max-height: 90vh !important;
+    padding: 16px !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  #modal-cleanup .modal-body {
+    max-height: calc(90vh - 110px) !important;
+    overflow-y: auto !important;
+    gap: 16px !important;
+  }
+
+  /* Backup & Restore section: stack select & action buttons */
+  #modal-cleanup div[style*="align-items: flex-end"],
+  #modal-cleanup div[style*="align-items:flex-end"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  #modal-cleanup div[style*="align-items: flex-end"] > div,
+  #modal-cleanup div[style*="align-items:flex-end"] > div {
+    width: 100% !important;
+    align-items: stretch !important;
+  }
+
+  #backup-restore-target {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Cleanup & Purge rows: flex wrap on small screens */
+  #modal-cleanup div[style*="justify-content: space-between"][style*="align-items: center"],
+  #modal-cleanup div[style*="justify-content:space-between"][style*="align-items:center"] {
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  #modal-cleanup .form-group {
+    flex: 1 1 100% !important;
+  }
+
+  /* Purge box layout adjustments */
+  #modal-cleanup div[style*="background: rgba(248, 113, 113, 0.05)"],
+  #modal-cleanup div[style*="background:rgba(248, 113, 113, 0.05)"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  #purge-target {
+    width: 100% !important;
+  }
+
+  #btn-clean-purge {
+    width: 100% !important;
+    justify-content: center !important;
+    margin-top: 4px !important;
+  }
+}
+
+/* Extra-narrow phones (≤ 480 px) */
+@media (max-width: 480px) {
+  .section {
+    padding: 12px;
+  }
+
+  /* Narrow the 2-col filter grids to single column */
+  #job-history-filters {
+    grid-template-columns: 1fr !important;
+  }
+
+  #jh-filter-search,
+  #jh-results-count {
+    grid-column: span 1 !important;
+  }
+
+  /* 5-col → single column on very small screens */
+  #section-new-job .grid[style*="repeat(5, 1fr)"],
+  #section-scheduler .grid[style*="repeat(5, 1fr)"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Action buttons: stack full-width */
+  #section-new-job .card > .mt-4[style*="display: flex"] .btn {
+    flex: 1 1 100%;
+  }
+
+  /* Job history stats dots: hide on tiny screens */
+  #job-history-list .card > div[style*="gap:14px"] > div[style*="color:var(--border)"] {
+    display: none !important;
   }
 }
 

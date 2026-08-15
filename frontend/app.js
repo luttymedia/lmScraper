@@ -3177,6 +3177,159 @@ async function pollLiveState() {
   }
 }
 
+// ── Mobile Tunnel Module ──────────────────────────────────────────────────
+
+async function checkMobileTunnelStatus() {
+  try {
+    const res = await fetch('/api/tunnel/status');
+    if (!res.ok) return;
+    const data = await res.json();
+    updateTunnelUI(data);
+  } catch (e) {
+    // Ignore fetch error
+  }
+}
+
+function updateTunnelUI(data) {
+  const sidebarDot = document.getElementById('mobile-tunnel-dot');
+  const modalDot = document.getElementById('tunnel-modal-status-dot');
+  const modalStatusText = document.getElementById('tunnel-modal-status-text');
+  const btnToggle = document.getElementById('btn-toggle-tunnel');
+  const btnText = document.getElementById('tunnel-btn-text');
+  const btnSpinner = document.getElementById('tunnel-btn-spinner');
+  const activeInfo = document.getElementById('tunnel-active-info');
+  const errorInfo = document.getElementById('tunnel-error-info');
+  const errorText = document.getElementById('tunnel-error-text');
+  const urlInput = document.getElementById('tunnel-url-input');
+  const openUrlLink = document.getElementById('btn-open-tunnel-url');
+  const qrImage = document.getElementById('tunnel-qr-code');
+
+  if (data.status === 'active' && data.url) {
+    if (sidebarDot) sidebarDot.style.background = '#4ade80';
+    if (modalDot) modalDot.style.background = '#4ade80';
+    if (modalStatusText) modalStatusText.textContent = 'Tunnel is Active';
+    if (btnText) btnText.textContent = 'Stop Tunnel';
+    if (btnToggle) {
+      btnToggle.className = 'btn btn-danger btn-sm';
+      btnToggle.disabled = false;
+    }
+    if (btnSpinner) btnSpinner.classList.add('hidden');
+    if (activeInfo) activeInfo.classList.remove('hidden');
+    if (errorInfo) errorInfo.classList.add('hidden');
+
+    if (urlInput) urlInput.value = data.url;
+    if (openUrlLink) openUrlLink.href = data.url;
+    if (qrImage) {
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.url)}`;
+      if (qrImage.src !== qrUrl) qrImage.src = qrUrl;
+    }
+  } else if (data.status === 'starting') {
+    if (sidebarDot) sidebarDot.style.background = '#f59e0b';
+    if (modalDot) modalDot.style.background = '#f59e0b';
+    if (modalStatusText) modalStatusText.textContent = 'Starting Tunnel...';
+    if (btnText) btnText.textContent = 'Connecting...';
+    if (btnToggle) {
+      btnToggle.className = 'btn btn-secondary btn-sm';
+      btnToggle.disabled = true;
+    }
+    if (btnSpinner) btnSpinner.classList.remove('hidden');
+    if (activeInfo) activeInfo.classList.add('hidden');
+    if (errorInfo) errorInfo.classList.add('hidden');
+  } else {
+    if (sidebarDot) sidebarDot.style.background = '#64748b';
+    if (modalDot) modalDot.style.background = '#64748b';
+    if (modalStatusText) modalStatusText.textContent = 'Tunnel is Stopped';
+    if (btnText) btnText.textContent = 'Start Tunnel';
+    if (btnToggle) {
+      btnToggle.className = 'btn btn-primary btn-sm';
+      btnToggle.disabled = false;
+    }
+    if (btnSpinner) btnSpinner.classList.add('hidden');
+    if (activeInfo) activeInfo.classList.add('hidden');
+
+    if (data.error) {
+      if (errorInfo) errorInfo.classList.remove('hidden');
+      if (errorText) errorText.textContent = data.error;
+    } else {
+      if (errorInfo) errorInfo.classList.add('hidden');
+    }
+  }
+}
+
+function setupMobileTunnelEvents() {
+  const btnSidebar = document.getElementById('btn-mobile-tunnel');
+  const modal = document.getElementById('mobile-tunnel-modal');
+  const btnCloseHeader = document.getElementById('btn-close-tunnel-modal');
+  const btnCloseFooter = document.getElementById('btn-close-tunnel-footer');
+  const btnToggle = document.getElementById('btn-toggle-tunnel');
+  const btnCopy = document.getElementById('btn-copy-tunnel-url');
+
+  if (btnSidebar) {
+    btnSidebar.addEventListener('click', () => {
+      if (modal) modal.classList.remove('hidden');
+      checkMobileTunnelStatus();
+    });
+  }
+
+  const closeModal = () => {
+    if (modal) modal.classList.add('hidden');
+  };
+
+  if (btnCloseHeader) btnCloseHeader.addEventListener('click', closeModal);
+  if (btnCloseFooter) btnCloseFooter.addEventListener('click', closeModal);
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+  }
+
+  if (btnToggle) {
+    btnToggle.addEventListener('click', async () => {
+      const btnText = document.getElementById('tunnel-btn-text');
+      const isCurrentlyActive = btnText && btnText.textContent.includes('Stop');
+      const btnSpinner = document.getElementById('tunnel-btn-spinner');
+
+      btnToggle.disabled = true;
+      if (btnSpinner) btnSpinner.classList.remove('hidden');
+
+      try {
+        const endpoint = isCurrentlyActive ? '/api/tunnel/stop' : '/api/tunnel/start';
+        const res = await fetch(endpoint, { method: 'POST' });
+        const data = await res.json();
+        updateTunnelUI(data);
+
+        if (!isCurrentlyActive && data.status === 'starting') {
+          let attempts = 0;
+          const pollStart = setInterval(async () => {
+            attempts++;
+            const statusRes = await fetch('/api/tunnel/status');
+            const statusData = await statusRes.json();
+            updateTunnelUI(statusData);
+            if (statusData.status !== 'starting' || attempts > 15) {
+              clearInterval(pollStart);
+            }
+          }, 1000);
+        }
+      } catch (e) {
+        showToast('Error toggling mobile tunnel', 'error');
+      } finally {
+        btnToggle.disabled = false;
+        if (btnSpinner) btnSpinner.classList.add('hidden');
+      }
+    });
+  }
+
+  if (btnCopy) {
+    btnCopy.addEventListener('click', () => {
+      const urlInput = document.getElementById('tunnel-url-input');
+      if (urlInput && urlInput.value) {
+        navigator.clipboard.writeText(urlInput.value);
+        showToast('Mobile URL copied to clipboard!', 'success');
+      }
+    });
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -3208,6 +3361,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupResultsColumns();
   setupJobMultiselectEvents();
   setupNicknameSync();
+  setupMobileTunnelEvents();
   
   Promise.allSettled([
     loadVersionInfo(),
@@ -3217,6 +3371,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadResults(),
     loadSchedules(),
     loadGroups(),
+    checkMobileTunnelStatus(),
     pollLiveState()
   ]);
   
@@ -3224,4 +3379,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(pollLiveState, 5000);
   // Monitor stats every 60 seconds
   setInterval(loadMonitorStats, 60000);
+  // Check mobile tunnel status every 15 seconds
+  setInterval(checkMobileTunnelStatus, 15000);
 });
+

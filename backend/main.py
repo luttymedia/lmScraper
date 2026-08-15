@@ -45,6 +45,7 @@ from backend.jobs.scheduler import (
 )
 from backend.scraper.engine import ScraperConfig
 from backend.version import VERSION, RELEASE_DATE, CHANGELOG
+from backend.tunnel import tunnel_manager
 
 PROJECT_ROOT = Path(__file__).parent.parent
 FRONTEND_DIR = PROJECT_ROOT / 'frontend'
@@ -70,6 +71,7 @@ async def lifespan(app: FastAPI):
     await start_scheduler()
     maint_task = asyncio.create_task(periodic_maintenance_loop())
     yield
+    await tunnel_manager.stop()
     maint_task.cancel()
     await shutdown_scheduler()
 
@@ -638,6 +640,19 @@ async def get_version_route():
         "release_date": backend.version.RELEASE_DATE,
         "changelog": backend.version.CHANGELOG
     }
+
+# API Routes - Mobile Access Tunnel
+@app.get("/api/tunnel/status")
+async def get_tunnel_status_route():
+    return tunnel_manager.status_dict
+
+@app.post("/api/tunnel/start")
+async def start_tunnel_route():
+    return await tunnel_manager.start()
+
+@app.post("/api/tunnel/stop")
+async def stop_tunnel_route():
+    return await tunnel_manager.stop()
 
 # API Routes - Location Autocomplete
 @app.get("/api/location-suggest")

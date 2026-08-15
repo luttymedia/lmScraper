@@ -76,7 +76,7 @@ h1, h2, h3, h4, h5, h6, strong {
   font-weight: 600;
   color: var(--success);
   margin-bottom: 0;
-  padding-left: 12px;
+  padding-left: 0;
 }
 
 .nav-item {
@@ -369,6 +369,10 @@ input[type=range]::-webkit-slider-runnable-track {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+#btn-version {
+  text-transform: none;
 }
 
 .badge-pending, .badge-cancelled {

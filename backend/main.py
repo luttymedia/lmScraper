@@ -749,6 +749,21 @@ async def serve_css():
 async def serve_js():
     return FileResponse(FRONTEND_DIR / "app.js", media_type="application/javascript", headers=NO_CACHE_HEADERS)
 
+@app.get("/favicon-192.png")
+@app.get("/favicon.ico")
+async def serve_favicon():
+    fav = FRONTEND_DIR / "favicon-192.png"
+    if fav.exists():
+        return FileResponse(fav, media_type="image/png", headers=NO_CACHE_HEADERS)
+    return {"error": "Favicon not found"}
+
+@app.get("/icon-512.png")
+async def serve_icon_512():
+    icon = FRONTEND_DIR / "icon-512.png"
+    if icon.exists():
+        return FileResponse(icon, media_type="image/png", headers=NO_CACHE_HEADERS)
+    return {"error": "Icon not found"}
+
 @app.get("/")
 async def root():
     index_path = FRONTEND_DIR / "index.html"

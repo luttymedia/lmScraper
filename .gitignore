@@ -48,3 +48,6 @@ test-results/
 
 # User manual backups
 backups/
+
+# Local untracked files
+local/

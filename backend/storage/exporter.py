@@ -81,11 +81,22 @@ async def get_events_df(filters: dict) -> pd.DataFrame:
 
 
 async def export_to_csv(filters: dict) -> StreamingResponse:
-    """Export events to CSV format."""
+    """Export events to CSV format with UTF-8 BOM and text-formatted phone numbers for Excel compatibility."""
     df = await get_events_df(filters)
 
+    # Format phone number and whatsapp columns for Excel to avoid scientific notation (e.g. 3.55692E+11)
+    df_csv = df.copy()
+    phone_cols = ['organizer_phone', 'organizer_whatsapp']
+    for col in phone_cols:
+        if col in df_csv.columns:
+            df_csv[col] = df_csv[col].apply(
+                lambda v: f'="{v}"' if v and str(v).strip() and str(v).strip().replace('+', '').isdigit() else v
+            )
+
     stream = io.StringIO()
-    df.to_csv(stream, index=False)
+    # Prepend UTF-8 BOM so Excel opens special characters with UTF-8 encoding
+    stream.write('\ufeff')
+    df_csv.to_csv(stream, index=False)
     stream.seek(0)
 
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -93,7 +104,7 @@ async def export_to_csv(filters: dict) -> StreamingResponse:
 
     return StreamingResponse(
         iter([stream.getvalue()]),
-        media_type="text/csv",
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
@@ -213,6 +224,12 @@ def parse_import_file(file_bytes: bytes, filename: str) -> pd.DataFrame:
         raise ValueError(
             "The file is missing the 'record_id' column. "
             "Please use a file exported from lmScraper so that records can be matched."
+        )
+
+    # Clean Excel formula text wrapping like ="355692..." if present
+    for col in df.columns:
+        df[col] = df[col].apply(
+            lambda v: v[2:-1] if isinstance(v, str) and v.startswith('="') and v.endswith('"') else v
         )
 
     return df

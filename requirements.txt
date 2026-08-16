@@ -12,3 +12,5 @@ python-multipart==0.0.12
 fake-useragent==1.5.1
 aiofiles==24.1.0
 websockets==13.1
+pillow==12.3.0
+

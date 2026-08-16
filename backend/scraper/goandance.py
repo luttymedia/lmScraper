@@ -105,5 +105,16 @@ class GoAndDanceScraper(BaseScraper):
             event['contact_hidden'] = 1 if detect_hidden_contact(soup) else 0
             event['scraped_at'] = datetime.utcnow().isoformat()
             profile_url = find_organizer_profile_url(soup, url)
+        else:
+            # If JSON succeeded but missed the organizer name, fallback to HTML extraction
+            if not event.get('organizer_name'):
+                org = extract_organizer(soup)
+                # Only update empty fields from the org extraction
+                for k, v in org.items():
+                    if v and not event.get(k):
+                        event[k] = v
+                
+                if not profile_url:
+                    profile_url = find_organizer_profile_url(soup, url)
             
         return event, profile_url

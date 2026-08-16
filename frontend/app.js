@@ -30,7 +30,10 @@ const ICONS = {
   plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
   refreshCw: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`,
   layers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`,
-  terminal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`
+  terminal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`,
+  arrowUp: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="sort-icon"><path d="M18 15l-6-6-6 6"/></svg>`,
+  arrowDown: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="sort-icon"><path d="M6 9l6 6 6-6"/></svg>`,
+  sortNeutral: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sort-icon sort-icon-neutral"><path d="M8 9l4-4 4 4"/><path d="M16 15l-4 4-4-4"/></svg>`
 };
 
 function escapeHtml(str) {
@@ -731,18 +734,43 @@ function resetJobControls() {
 
 // ── Results Table ────────────────────────────────────────────────────────────
 
+const LS_COL_WIDTHS_KEY = 'lmscraper_column_widths';
+
+function loadColumnWidths() {
+  try {
+    const raw = localStorage.getItem(LS_COL_WIDTHS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) {
+    return {};
+  }
+}
+
+function saveColumnWidths(widths) {
+  try {
+    localStorage.setItem(LS_COL_WIDTHS_KEY, JSON.stringify(widths));
+  } catch(e) {
+    console.error('Failed to save column widths', e);
+  }
+}
+
+let columnWidths = loadColumnWidths();
+
+function getColumnWidth(colId, defaultWidth) {
+  return columnWidths[colId] || defaultWidth || '120px';
+}
+
 const COLUMNS = [
-  { id: 'bulk', label: '<input type="checkbox" id="bulk-select-all">', width: '40px', render: (row) => `<input type="checkbox" class="row-checkbox" value="${row.id}">` },
-  { id: 'title', label: 'Title', render: (row) => `<strong>${truncate(row.title || 'Untitled', 40)}</strong>` },
-  { id: 'date', label: 'Date & Time', render: (row) => formatDate(row.date_start || row.start_date) },
-  { id: 'city', label: 'City/Country', render: (row) => `${row.city || '—'} ${row.country ? `(${row.country})` : ''}` },
-  { id: 'category', label: 'Event Type', render: (row) => `<span class="tag">${row.category || '—'}</span>` },
-  { id: 'dance_style', label: 'Dance Style', render: (row) => row.dance_style ? `<span class="tag" style="background:var(--primary);color:#fff">${row.dance_style}</span>` : '—' },
-  { id: 'organizer', label: 'Organizer', render: (row) => row.organizer_name || '—' },
-  { id: 'platform', label: 'Platform', render: (row) => `<span class="tag">${row.platform || 'goandance'}</span>` },
-  { id: 'socials', label: 'Contact', render: (row) => renderSocialLinks(row) },
-  { id: 'hidden_contact', label: 'Hidden', render: (row) => row.contact_hidden ? `<span class="icon-link" data-tooltip="Hidden contact form">${ICONS.lock}</span>` : '—' },
-  { id: 'source', label: 'Source', render: (row) => row.event_url || row.source_url ? `<a href="${row.event_url || row.source_url}" target="_blank" class="icon-link" data-tooltip="Open source">${ICONS.link}</a>` : '—' }
+  { id: 'bulk', sortable: false, defaultWidth: '44px', label: '<input type="checkbox" id="bulk-select-all">', render: (row) => `<input type="checkbox" class="row-checkbox" value="${row.id}">` },
+  { id: 'title', sortKey: 'title', defaultWidth: '220px', label: 'Title', render: (row) => `<strong>${truncate(row.title || 'Untitled', 40)}</strong>` },
+  { id: 'date', sortKey: 'date_start', defaultWidth: '170px', label: 'Date & Time', render: (row) => formatDate(row.date_start || row.start_date) },
+  { id: 'city', sortKey: 'city', defaultWidth: '150px', label: 'City/Country', render: (row) => `${row.city || '—'} ${row.country ? `(${row.country})` : ''}` },
+  { id: 'category', sortKey: 'category', defaultWidth: '130px', label: 'Event Type', render: (row) => `<span class="tag">${row.category || '—'}</span>` },
+  { id: 'dance_style', sortKey: 'dance_style', defaultWidth: '130px', label: 'Dance Style', render: (row) => row.dance_style ? `<span class="tag" style="background:var(--primary);color:#fff">${row.dance_style}</span>` : '—' },
+  { id: 'organizer', sortKey: 'organizer_name', defaultWidth: '150px', label: 'Organizer', render: (row) => row.organizer_name || '—' },
+  { id: 'platform', sortKey: 'platform', defaultWidth: '110px', label: 'Platform', render: (row) => `<span class="tag">${row.platform || 'goandance'}</span>` },
+  { id: 'socials', sortKey: 'socials', defaultWidth: '140px', label: 'Contact', render: (row) => renderSocialLinks(row) },
+  { id: 'hidden_contact', sortKey: 'contact_hidden', defaultWidth: '85px', label: 'Hidden', render: (row) => row.contact_hidden ? `<span class="icon-link" data-tooltip="Hidden contact form">${ICONS.lock}</span>` : '—' },
+  { id: 'source', sortKey: 'source', defaultWidth: '85px', label: 'Source', render: (row) => row.event_url || row.source_url ? `<a href="${row.event_url || row.source_url}" target="_blank" class="icon-link" data-tooltip="Open source">${ICONS.link}</a>` : '—' }
 ];
 
 let visibleCols = new Set(COLUMNS.map(c => c.id));
@@ -856,13 +884,39 @@ function renderResultsTable(data) {
   COLUMNS.forEach(col => {
     if(!visibleCols.has(col.id)) return;
     const th = document.createElement('th');
+    th.dataset.colId = col.id;
+    th.style.width = getColumnWidth(col.id, col.defaultWidth);
+
     if (col.id === 'bulk') {
-      th.innerHTML = `<input type="checkbox" id="bulk-select-all">`;
+      th.innerHTML = `<div class="th-header-inner" style="justify-content:center;"><span class="th-header-label"><input type="checkbox" id="bulk-select-all"></span></div><div class="col-resizer" data-col-id="${col.id}"></div>`;
     } else {
-      th.textContent = col.label;
-      th.addEventListener('click', () => {
-        if(sortCol === col.id) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-        else { sortCol = col.id; sortDir = 'asc'; }
+      const targetSortKey = col.sortKey || col.id;
+      const isActiveSort = (sortCol === targetSortKey || sortCol === col.id);
+      
+      if (isActiveSort) {
+        th.classList.add('sort-active');
+      }
+
+      const icon = isActiveSort 
+        ? (sortDir === 'asc' ? ICONS.arrowUp : ICONS.arrowDown) 
+        : ICONS.sortNeutral;
+
+      th.innerHTML = `
+        <div class="th-header-inner">
+          <span class="th-header-label">${col.label}</span>
+          <span class="sort-indicator">${icon}</span>
+        </div>
+        <div class="col-resizer" data-col-id="${col.id}"></div>
+      `;
+
+      th.addEventListener('click', (e) => {
+        if (e.target.classList.contains('col-resizer')) return;
+        if (isActiveSort) {
+          sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortCol = targetSortKey;
+          sortDir = 'asc';
+        }
         loadResults();
       });
     }
@@ -896,6 +950,68 @@ function renderResultsTable(data) {
   });
   
   document.querySelectorAll('.row-checkbox').forEach(cb => cb.addEventListener('change', toggleBulkActions));
+  
+  initColumnResizing();
+}
+
+function initColumnResizing() {
+  const resizers = document.querySelectorAll('#results-table .col-resizer');
+  resizers.forEach(resizer => {
+    resizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const colId = resizer.dataset.colId;
+      const th = resizer.parentElement;
+      const startX = e.pageX;
+      const startWidth = th.offsetWidth;
+      
+      resizer.classList.add('is-resizing');
+      document.body.classList.add('is-resizing-col');
+      
+      const onMouseMove = (moveEvent) => {
+        const deltaX = moveEvent.pageX - startX;
+        const newWidth = Math.max(45, startWidth + deltaX);
+        th.style.width = `${newWidth}px`;
+        columnWidths[colId] = `${newWidth}px`;
+      };
+      
+      const onMouseUp = () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        resizer.classList.remove('is-resizing');
+        document.body.classList.remove('is-resizing-col');
+        saveColumnWidths(columnWidths);
+      };
+      
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
+
+    resizer.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const colId = resizer.dataset.colId;
+      const th = resizer.parentElement;
+      
+      th.style.width = 'auto';
+      const colIndex = Array.from(th.parentElement.children).indexOf(th);
+      let maxW = th.scrollWidth;
+      
+      const rows = document.querySelectorAll('#results-tbody tr');
+      rows.forEach(r => {
+        const cell = r.children[colIndex];
+        if (cell) {
+          maxW = Math.max(maxW, cell.scrollWidth);
+        }
+      });
+      
+      const fitWidth = Math.max(50, Math.min(600, maxW + 24)) + 'px';
+      th.style.width = fitWidth;
+      columnWidths[colId] = fitWidth;
+      saveColumnWidths(columnWidths);
+    });
+  });
 }
 
 function toggleBulkActions() {

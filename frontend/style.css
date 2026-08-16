@@ -474,6 +474,124 @@ tr:last-child td {
   border-bottom: none;
 }
 
+/* Results Table - Fixed Layout & Editable Column Widths */
+#results-table {
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+#results-table th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+}
+
+#results-table td {
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Header Content & Sort Indicator */
+.th-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 12px 14px;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.th-header-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.sort-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.35;
+  transition: opacity 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+#results-table th:hover .sort-indicator {
+  opacity: 0.75;
+}
+
+#results-table th.sort-active {
+  color: var(--primary);
+  background-color: var(--surface-elevated);
+}
+
+#results-table th.sort-active .sort-indicator {
+  opacity: 1;
+  color: var(--primary);
+}
+
+.sort-icon {
+  display: block;
+}
+
+.sort-icon-neutral {
+  opacity: 0.4;
+}
+
+/* Column Resizer Handle */
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  z-index: 10;
+}
+
+.col-resizer::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  right: 1px;
+  width: 2px;
+  background-color: var(--border);
+  transition: background-color 0.15s ease, width 0.15s ease;
+  border-radius: 1px;
+}
+
+.col-resizer:hover::after,
+.col-resizer.is-resizing::after {
+  background-color: var(--primary);
+  width: 3px;
+}
+
+body.is-resizing-col {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.is-resizing-col * {
+  user-select: none !important;
+}
+
 /* Log Panel */
 .log-panel {
   background-color: #000;

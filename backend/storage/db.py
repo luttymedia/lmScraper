@@ -413,10 +413,24 @@ async def query_events(filters: dict, page: int, per_page: int) -> tuple[list[di
     if sort_dir not in ('ASC', 'DESC'):
         sort_dir = 'DESC'
         
-    allowed_sort_cols = {
-        'title', 'date_start', 'city', 'price', 'category', 'organizer_name', 'scraped_at', 'platform', 'dance_style'
+    sort_mapping = {
+        'title': 'title',
+        'date': 'date_start',
+        'date_start': 'date_start',
+        'city': 'city',
+        'price': 'price',
+        'category': 'category',
+        'organizer': 'organizer_name',
+        'organizer_name': 'organizer_name',
+        'scraped_at': 'scraped_at',
+        'platform': 'platform',
+        'dance_style': 'dance_style',
+        'hidden_contact': 'contact_hidden',
+        'contact_hidden': 'contact_hidden',
+        'source': "COALESCE(NULLIF(event_url, ''), NULLIF(source_domain, ''))",
+        'socials': "(CASE WHEN (organizer_email IS NOT NULL AND organizer_email != '') OR (organizer_phone IS NOT NULL AND organizer_phone != '') OR (organizer_whatsapp IS NOT NULL AND organizer_whatsapp != '') OR (organizer_instagram IS NOT NULL AND organizer_instagram != '') OR (organizer_facebook IS NOT NULL AND organizer_facebook != '') OR (organizer_website IS NOT NULL AND organizer_website != '') THEN 1 ELSE 0 END)",
     }
-    order_col = sort_by if sort_by in allowed_sort_cols else 'scraped_at'
+    order_col = sort_mapping.get(sort_by, 'scraped_at')
     
     count_query = f"SELECT COUNT(*) FROM events WHERE {where_clause}"
     query = f"SELECT * FROM events WHERE {where_clause} ORDER BY {order_col} {sort_dir} LIMIT ? OFFSET ?"

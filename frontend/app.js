@@ -339,6 +339,30 @@ function setupUrlSync(urlInput, styleInput, dateFromInput, dateToInput, location
     });
   });
 
+  // Platform Radio Change -> Toggle Filters
+  const platformRadiosName = langRadiosName.replace('_gad_lang', '_platform');
+  document.querySelectorAll(`input[name="${platformRadiosName}"]`).forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        const platform = e.target.value;
+        const filterContainer = urlInput.id === 'job-url' ? document.getElementById('job-filters-container') : document.getElementById('sched-filters-container');
+        const langGroup = urlInput.id === 'job-url' ? document.getElementById('job-gad-lang-group') : document.getElementById('sched-gad-lang-group');
+        
+        if (platform === 'salsero') {
+          if (filterContainer) filterContainer.style.display = 'none';
+          if (langGroup) langGroup.style.display = 'none';
+          urlInput.value = 'https://salsero.es/bailas';
+          urlInput.placeholder = 'https://salsero.es/bailas';
+        } else {
+          if (filterContainer) filterContainer.style.display = 'grid';
+          if (langGroup) langGroup.style.display = 'block';
+          const langRadio = document.querySelector(`input[name="${langRadiosName}"]:checked`);
+          updateUrlLanguage(urlInput, langRadio ? langRadio.value : 'en');
+        }
+      }
+    });
+  });
+
   // Copy, Clear & Open URL buttons
   copyBtn?.addEventListener('click', async () => {
     const val = urlInput.value.trim();
@@ -532,7 +556,7 @@ let isNicknameManuallyEdited = false;
 
 function generateDefaultJobNickname() {
   const platformRadio = document.querySelector('input[name="job_platform"]:checked');
-  const platform = platformRadio ? (platformRadio.value === 'goandance' ? 'Go&Dance' : platformRadio.value) : 'Go&Dance';
+  const platform = platformRadio ? (platformRadio.value === 'goandance' ? 'Go&Dance' : (platformRadio.value === 'salsero' ? 'Salsero' : platformRadio.value)) : 'Go&Dance';
   const style = document.getElementById('job-dance-style')?.value?.trim();
   const city = document.getElementById('job-location')?.value?.trim();
   const keyword = document.getElementById('job-keyword')?.value?.trim();
@@ -767,7 +791,11 @@ const COLUMNS = [
   { id: 'category', sortKey: 'category', defaultWidth: '130px', label: 'Event Type', render: (row) => `<span class="tag">${row.category || '—'}</span>` },
   { id: 'dance_style', sortKey: 'dance_style', defaultWidth: '130px', label: 'Dance Style', render: (row) => row.dance_style ? `<span class="tag" style="background:var(--primary);color:#fff">${row.dance_style}</span>` : '—' },
   { id: 'organizer', sortKey: 'organizer_name', defaultWidth: '150px', label: 'Organizer', render: (row) => row.organizer_name || '—' },
-  { id: 'platform', sortKey: 'platform', defaultWidth: '110px', label: 'Platform', render: (row) => `<span class="tag">${row.platform || 'goandance'}</span>` },
+  { id: 'platform', sortKey: 'platform', defaultWidth: '110px', label: 'Platform', render: (row) => {
+    const p = row.platform || 'goandance';
+    const label = p === 'goandance' ? 'Go&Dance' : p.charAt(0).toUpperCase() + p.slice(1);
+    return `<span class="tag">${label}</span>`;
+  }},
   { id: 'socials', sortKey: 'socials', defaultWidth: '140px', label: 'Contact', render: (row) => renderSocialLinks(row) },
   { id: 'hidden_contact', sortKey: 'contact_hidden', defaultWidth: '85px', label: 'Hidden', render: (row) => row.contact_hidden ? `<span class="icon-link" data-tooltip="Hidden contact form">${ICONS.lock}</span>` : '—' },
   { id: 'source', sortKey: 'source', defaultWidth: '85px', label: 'Source', render: (row) => row.event_url || row.source_url ? `<a href="${row.event_url || row.source_url}" target="_blank" class="icon-link" data-tooltip="Open source">${ICONS.link}</a>` : '—' }
@@ -1842,7 +1870,8 @@ window.rerunJob = async (jobId) => {
     }
 
     // Populate Platform radio
-    const platform = job.platform || 'goandance';
+    const p = job.platform || 'goandance';
+    const platformLabel = p === 'goandance' ? 'Go&Dance' : p.charAt(0).toUpperCase() + p.slice(1);
     document.querySelectorAll('input[name="job_platform"]').forEach(r => {
       r.checked = (r.value === platform);
     });
@@ -2201,7 +2230,8 @@ window.editSchedule = async (id) => {
       syncUrlToGadLanguage(sched.url, 'sched_gad_lang');
     }
     
-    const platform = sched.platform || 'goandance';
+    const p = sched.platform || 'goandance';
+    const platformLabel = p === 'goandance' ? 'Go&Dance' : p.charAt(0).toUpperCase() + p.slice(1);
     const radio = document.querySelector(`input[name="sched_platform"][value="${platform}"]`);
     if (radio) radio.checked = true;
     

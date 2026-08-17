@@ -13,11 +13,14 @@ from backend.scraper.html_cache import save_html, load_html, is_cached
 from backend.storage.db import insert_event, update_job, insert_job_log
 from backend.scraper.base import BaseScraper
 from backend.scraper.goandance import GoAndDanceScraper
+from backend.scraper.salsero import SalseroScraper
 from backend.scraper.extractors import content_hash
 
 def get_scraper(platform: str) -> BaseScraper:
     if platform == 'goandance':
         return GoAndDanceScraper()
+    elif platform == 'salsero':
+        return SalseroScraper()
     # Fallback to GoAndDance for now if none specified
     return GoAndDanceScraper()
 
@@ -377,12 +380,52 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
             async def _emit_log(msg: str):
                 await _emit({"type": "log", "level": "info", "message": msg})
 
-            await _emit({"type": "log", "level": "info", "message": "Scrolling page and loading all events (clicking Load More until done)..."})
-            await auto_scroll(page, check_state=check_state, emit_log=_emit_log)
-            
             scraper = get_scraper(config.platform)
-            urls = await process_listing_page(page, config, scraper)
-            detail_urls.update(urls)
+
+            if config.platform == 'salsero':
+                # Salsero uses standard pagination (?page=X)
+                await _emit_log("Scanning Salsero pages for event links...")
+                page_num = 1
+                while True:
+                    await check_state()
+                    await _emit_log(f"Processing listing page {page_num}...")
+                    
+                    # Process current page
+                    urls = await process_listing_page(page, config, scraper)
+                    if not urls:
+                        await _emit_log("No events found on this page. Stopping pagination.")
+                        break
+                        
+                    detail_urls.update(urls)
+                    
+                    # Look for next page link
+                    # Typically `<a href="...?page=2" rel="next">»</a>`
+                    next_link = page.locator('a[rel="next"], ul.pagination li:not(.disabled) a:has-text("»"), ul.pagination li:not(.disabled) a:has-text("Next")')
+                    
+                    try:
+                        count = await next_link.count()
+                        if count > 0 and await next_link.first.is_visible():
+                            next_href = await next_link.first.get_attribute('href')
+                            if next_href:
+                                await _emit_log(f"Found next page link. Navigating...")
+                                await next_link.first.click(timeout=10000)
+                                await page.wait_for_load_state('domcontentloaded')
+                                await random_delay(1.5, 3.0)
+                                page_num += 1
+                                continue
+                    except Exception as e:
+                        logger.warning(f"Error checking next page: {e}")
+                        
+                    # If we get here, no next page found or error clicking
+                    await _emit_log("No more pages to load.")
+                    break
+                    
+            else:
+                # GoAndDance / Default
+                await _emit_log("Scrolling page and loading all events (clicking Load More until done)...")
+                await auto_scroll(page, check_state=check_state, emit_log=_emit_log)
+                urls = await process_listing_page(page, config, scraper)
+                detail_urls.update(urls)
             
             detail_urls_list = list(detail_urls)
             total = len(detail_urls_list)

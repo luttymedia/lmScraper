@@ -171,6 +171,9 @@
               <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
                 <input type="radio" name="job_platform" value="goandance" checked> Go&Dance
               </label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="radio" name="job_platform" value="salsero"> Salsero
+              </label>
               <!-- Add future platforms here -->
             </div>
           </div>
@@ -213,7 +216,7 @@
           </div>
         </div>
 
-        <div class="grid" style="grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 16px;">
+        <div class="grid" id="job-filters-container" style="grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 16px;">
           <div class="form-group">
             <label>Date From</label>
             <input type="date" id="job-date-from" class="input">
@@ -493,6 +496,9 @@
                   <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
                     <input type="radio" name="sched_platform" value="goandance" checked> Go&Dance
                   </label>
+                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                    <input type="radio" name="sched_platform" value="salsero"> Salsero
+                  </label>
                   <!-- Add future platforms here -->
                 </div>
               </div>
@@ -528,7 +534,7 @@
             </div>
           </div>
         </div>
-        <div class="grid" style="grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 16px;">
+        <div class="grid" id="sched-filters-container" style="grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 16px;">
           <div class="form-group"><label>Date From</label><input type="date" id="sched-date-from" class="input"></div>
           <div class="form-group"><label>Date To</label><input type="date" id="sched-date-to" class="input"></div>
           <div class="form-group">

@@ -1,9 +1,21 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "2.0.0"
-RELEASE_DATE = "2026-08-15"
+VERSION = "2.1.0"
+RELEASE_DATE = "2026-08-17"
 
 CHANGELOG = [
+    {
+        "version": "2.1.0",
+        "date": "2026-08-17",
+        "title": "Salsero Platform Integration",
+        "changes": [
+            "Integrated Salsero.es as a fully supported scraping platform with custom HTML structural parsing",
+            "Added dynamic UI toggles to hide unsupported platform-specific filters when Salsero is selected",
+            "Implemented engine routing to switch between Go&Dance's auto-scroll and Salsero's multi-page pagination",
+            "Added robust regex date and time parsing to standardize Salsero timestamps into ISO formats",
+            "Enhanced location extraction to cleanly isolate venue names from nested city and country elements"
+        ]
+    },
     {
         "version": "2.0.0",
         "date": "2026-08-15",

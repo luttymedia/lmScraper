@@ -2,6 +2,7 @@
   --bg: #09090b;
   --surface: #121214;
   --surface-elevated: #18181b;
+  --surface-hover: #222226;
   --accent: #ffffff;
   --accent-hover: #e4e4e7;
   --accent-dim: rgba(255, 255, 255, 0.08);
@@ -10,12 +11,12 @@
   --error: #ef4444;
   --text-primary: #f4f4f5;
   --text-secondary: #a1a1aa;
-  --text-muted: #52525b;
+  --text-muted: #71717a;
   --border: rgba(255, 255, 255, 0.08);
-  --radius-card: 10px;
-  --radius-btn: 99px;
+  --radius-card: 8px;
+  --radius-btn: 6px;
   --radius-badge: 99px;
-  --transition: 200ms ease;
+  --transition: 150ms ease;
   --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   --shadow-drop: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
@@ -34,6 +35,7 @@ body {
   display: flex;
   height: 100vh;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4, h5, h6, strong {
@@ -55,41 +57,85 @@ h1, h2, h3, h4, h5, h6, strong {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--text-muted);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 /* Sidebar */
 .sidebar {
-  width: 240px;
+  width: 220px;
   background-color: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 24px 12px;
+  padding: 16px 10px;
   flex-shrink: 0;
   z-index: 10;
 }
 
-.sidebar h1 {
-  font-size: 1.25rem;
+.sidebar .brand-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.brand img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.brand h1, .sidebar h1 {
+  font-size: 0.95rem;
   font-weight: 600;
-  color: var(--success);
-  margin-bottom: 0;
-  padding-left: 0;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin: 0;
+  padding: 0;
+}
+
+.brand-badge {
+  background: rgba(52, 211, 153, 0.12);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  padding: 2px 7px;
+  border-radius: var(--radius-badge);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  padding: 12px;
+  gap: 8px;
+  padding: 7px 10px;
   color: var(--text-secondary);
   text-decoration: none;
   border-radius: var(--radius-btn);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   cursor: pointer;
   transition: all var(--transition);
   font-weight: 500;
+  font-size: 0.8rem;
 }
 
 .nav-item:hover {
@@ -114,12 +160,12 @@ h1, h2, h3, h4, h5, h6, strong {
   position: relative;
   overflow-y: auto;
   min-width: 0;
-  padding-bottom: 60px; /* space for footer monitor */
+  padding-bottom: 50px; /* space for footer monitor */
 }
 
 .section {
   display: none;
-  padding: 32px;
+  padding: 20px 24px;
   animation: fadeIn var(--transition);
 }
 
@@ -128,9 +174,9 @@ h1, h2, h3, h4, h5, h6, strong {
 }
 
 .section-title {
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   font-weight: 600;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 /* Components */
@@ -138,14 +184,14 @@ h1, h2, h3, h4, h5, h6, strong {
   background-color: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  padding: 24px;
+  padding: 16px 20px;
   box-shadow: var(--shadow-drop), var(--shadow-inner);
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .grid {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
@@ -155,12 +201,12 @@ h1, h2, h3, h4, h5, h6, strong {
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 
 .form-group label {
-  font-size: 0.875rem;
+  font-size: 0.78rem;
   color: var(--text-secondary);
   font-weight: 500;
 }
@@ -169,16 +215,16 @@ h1, h2, h3, h4, h5, h6, strong {
   background-color: var(--surface-elevated);
   border: 1px solid var(--border);
   color: var(--text-primary);
-  border-radius: var(--radius-card);
-  padding: 10px 12px;
+  border-radius: var(--radius-btn);
+  padding: 7px 10px;
   font-family: inherit;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   outline: none;
   transition: border-color var(--transition);
 }
 
 .input:focus, .select:focus, .textarea:focus {
-  border-color: var(--accent);
+  border-color: rgba(52, 211, 153, 0.5);
 }
 
 .input::placeholder, .textarea::placeholder {
@@ -205,7 +251,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 
 .textarea {
   resize: vertical;
-  min-height: 80px;
+  min-height: 70px;
 }
 
 /* Buttons */
@@ -214,10 +260,10 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 10px 16px;
+  padding: 6px 12px;
   border-radius: var(--radius-btn);
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: 0.78rem;
   white-space: nowrap;
   word-break: keep-all;
   cursor: pointer;
@@ -232,6 +278,13 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   color: #4ade80;
   border: 1px solid rgba(52, 211, 153, 0.35);
   font-weight: 600;
+}
+
+.btn-primary:hover {
+  background-color: rgba(52, 211, 153, 0.25);
+  border-color: rgba(52, 211, 153, 0.6);
+  color: #86efac;
+  box-shadow: 0 0 16px rgba(52, 211, 153, 0.18);
 }
 
 .btn-primary:hover {
@@ -314,8 +367,9 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .btn-lg {
-  padding: 14px 24px;
-  font-size: 1rem;
+  padding: 8px 18px;
+  font-size: 0.84rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -438,7 +492,7 @@ table {
 }
 
 th, td {
-  padding: 12px 16px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -446,7 +500,7 @@ th, td {
 th {
   background-color: var(--surface-elevated);
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -462,7 +516,7 @@ th:hover {
 }
 
 td {
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   color: var(--text-primary);
 }
 

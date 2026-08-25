@@ -173,6 +173,7 @@ function setupNavigation() {
 
   navItems.forEach(item => {
     item.addEventListener('click', (e) => {
+      if (!item.hasAttribute('data-target')) return;
       e.preventDefault();
       const targetId = item.getAttribute('data-target');
       
@@ -3638,4 +3639,5 @@ document.addEventListener('DOMContentLoaded', () => {
   // Check mobile tunnel status every 15 seconds
   setInterval(checkMobileTunnelStatus, 15000);
 });
+
 

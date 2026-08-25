@@ -1,9 +1,21 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "2.2.0"
+VERSION = "3.0.0"
 RELEASE_DATE = "2026-08-25"
 
 CHANGELOG = [
+    {
+        "version": "3.0.0",
+        "date": "2026-08-25",
+        "title": "CRM Dashboard & Organizer Management",
+        "changes": [
+            "Added a dedicated CRM Dashboard for managing event organizers and tracking outreach pipelines",
+            "Implemented Organizer Synchronization to automatically aggregate contacts from scraped events with smart deduplication",
+            "Added Pipeline Stages, Interaction Timeline logging, and AI Outreach Draft generation with multi-language templates",
+            "Implemented Potential Duplicate Alerts with instant merging and dismiss persistence",
+            "Added Bulk Actions (batch stage changes, soft archiving, and permanent deletion) and multi-field search across organizers and event names"
+        ]
+    },
     {
         "version": "2.2.0",
         "date": "2026-08-25",

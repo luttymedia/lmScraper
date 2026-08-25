@@ -86,6 +86,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from backend.crm import router as crm_router
+app.include_router(crm_router)
+
 # API Routes - Jobs
 @app.post("/api/jobs")
 async def create_job_route(body: dict = Body(...)):
@@ -796,6 +799,14 @@ async def serve_css():
 @app.get("/app.js")
 async def serve_js():
     return FileResponse(FRONTEND_DIR / "app.js", media_type="application/javascript", headers=NO_CACHE_HEADERS)
+
+@app.get("/crm.js")
+async def serve_crm_js():
+    return FileResponse(FRONTEND_DIR / "crm.js", media_type="application/javascript", headers=NO_CACHE_HEADERS)
+
+@app.get("/crm")
+async def serve_crm():
+    return FileResponse(FRONTEND_DIR / "crm.html", headers=NO_CACHE_HEADERS)
 
 @app.get("/favicon-192.png")
 @app.get("/favicon.ico")

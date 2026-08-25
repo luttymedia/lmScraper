@@ -145,6 +145,102 @@ async def init_db() -> None:
             )
         ''')
         await db.execute('CREATE INDEX IF NOT EXISTS idx_job_logs_job_id ON job_logs(job_id)')
+        
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS organizers (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                email TEXT,
+                phone TEXT,
+                instagram TEXT,
+                facebook TEXT,
+                whatsapp TEXT,
+                tiktok TEXT,
+                youtube TEXT,
+                twitter TEXT,
+                website TEXT,
+                country TEXT,
+                city TEXT,
+                dance_styles TEXT,
+                event_count INTEGER DEFAULT 0,
+                pipeline_stage TEXT DEFAULT 'identified',
+                last_contact_date TEXT,
+                last_contact_channel TEXT,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                source_event_ids TEXT,
+                is_archived INTEGER DEFAULT 0
+            )
+        ''')
+        
+        # Backward compatibility for existing DB
+        try:
+            await db.execute("ALTER TABLE organizers ADD COLUMN is_archived INTEGER DEFAULT 0")
+        except:
+            pass
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS crm_interactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                organizer_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                type TEXT NOT NULL,
+                channel TEXT,
+                from_stage TEXT,
+                to_stage TEXT,
+                body TEXT,
+                created_by TEXT,
+                FOREIGN KEY (organizer_id) REFERENCES organizers(id) ON DELETE CASCADE
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS crm_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                language TEXT DEFAULT 'EN',
+                trigger_stage TEXT,
+                subject TEXT,
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        ''')
+        
+        # Seed default templates
+        async with db.execute("SELECT COUNT(*) as count FROM crm_templates") as cursor:
+            row = await cursor.fetchone()
+        if row and row['count'] <= 3:
+            now = datetime.utcnow().isoformat()
+            templates = [
+                ("Initial Outreach Email", "email", "EN", "identified", "Collaboration on {{event_name}}", "Hi {{organizer_name}},\n\nI came across your upcoming event {{event_name}} in {{city}}. I help dance organizers maximize ticket sales and promotions for {{dance_style}} events.\n\nWould you be open to a brief chat this week?\n\nBest regards,\n{{your_name}}"),
+                ("Initial Instagram DM", "instagram", "EN", "identified", "", "Hi {{organizer_name}}! 👋 Saw your upcoming {{dance_style}} event in {{city}}. Love what you're organizing! Sent you a quick email about collaboration, let me know if you got it. - {{your_name}}"),
+                ("Follow-up Email", "email", "EN", "awaiting_reply", "Quick follow-up regarding {{event_name}}", "Hi {{organizer_name}},\n\nJust following up on my previous note regarding {{event_name}}. Would love to connect whenever you have 5 minutes.\n\nThanks,\n{{your_name}}"),
+                ("WhatsApp Intro", "whatsapp", "EN", "identified", "", "Hi {{organizer_name}}! Reaching out regarding your event {{event_name}} in {{city}}. Do you have a moment for a quick question? - {{your_name}}"),
+                
+                # Spanish (ES)
+                ("Email de contacto inicial", "email", "ES", "identified", "Colaboración para {{event_name}}", "Hola {{organizer_name}},\n\nHe visto tu próximo evento {{event_name}} en {{city}}. Me dedico a la difusión y apoyo a organizadores de eventos de {{dance_style}}.\n\n¿Tendrías unos minutos esta semana para conversar brevemente?\n\nUn cordial saludo,\n{{your_name}}"),
+                ("Mensaje de Instagram", "instagram", "ES", "identified", "", "¡Hola {{organizer_name}}! 👋 Vi tu evento de {{dance_style}} en {{city}}. ¡Enhorabuena por la iniciativa! Te he dejado un mensaje por correo, ¿lo has recibido? - {{your_name}}"),
+                ("Email de seguimiento", "email", "ES", "awaiting_reply", "Seguimiento sobre {{event_name}}", "Hola {{organizer_name}},\n\nTe escribo brevemente para retomar mi mensaje anterior sobre {{event_name}}. Avísame si tienes un momento para charlar.\n\nMuchas gracias,\n{{your_name}}"),
+                ("Mensaje de WhatsApp", "whatsapp", "ES", "identified", "", "¡Hola {{organizer_name}}! Te escribo respecto a tu evento {{event_name}} en {{city}}. ¿Tienes un minuto para una consulta rápida? - {{your_name}}"),
+                
+                # Portuguese (PT-BR)
+                ("Email de contato inicial", "email", "PT-BR", "identified", "Parceria para o evento {{event_name}}", "Olá {{organizer_name}},\n\nVi a divulgação do seu evento {{event_name}} em {{city}}. Trabalho com suporte e promoção para organizadores de {{dance_style}}.\n\nVocê teria alguns minutos esta semana para bater um papo rápido?\n\nUm abraço,\n{{your_name}}"),
+                ("Mensagem do Instagram", "instagram", "PT-BR", "identified", "", "Oi {{organizer_name}}! 👋 Vi seu evento de {{dance_style}} em {{city}}. Muito top o trabalho de vocês! Te mandei um e-mail com uma proposta rápida, chegou a ver? - {{your_name}}"),
+                ("Email de acompanhamento", "email", "PT-BR", "awaiting_reply", "Acompanhamento: {{event_name}}", "Olá {{organizer_name}},\n\nPassando apenas para retomar meu contato anterior sobre o evento {{event_name}}. Se tiver disponibilidade, adoraria conversar.\n\nObrigado,\n{{your_name}}"),
+                ("Mensagem de WhatsApp", "whatsapp", "PT-BR", "identified", "", "Oi {{organizer_name}}! Tudo bem? Entro em contato sobre o seu evento {{event_name}} em {{city}}. Podemos conversar rapidinho? - {{your_name}}")
+            ]
+            for t in templates:
+                await db.execute('''
+                    INSERT INTO crm_templates (name, channel, language, trigger_stage, subject, body, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (t[0], t[1], t[2], t[3], t[4], t[5], now))
+        
         await db.commit()
         
         # Migrations

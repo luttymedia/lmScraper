@@ -119,7 +119,7 @@ def content_hash(title: str, date: str, url: str) -> str:
     """
     norm_url = normalize_event_url(url)
     norm_date = normalize_date(date or '')
-    s = f"{title or ''}{norm_date}{norm_url}".lower().strip()
+    s = f"{(title or '').strip()}{norm_date}{norm_url}".lower().strip()
     return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
 def extract_event_fields(soup: BeautifulSoup, url: str, source_domain: str) -> dict:
@@ -183,6 +183,9 @@ def extract_event_fields(soup: BeautifulSoup, url: str, source_domain: str) -> d
                 heading = cal_item.find(class_='heading')
                 if heading:
                     fields['date_start'] = heading.get_text(strip=True)
+                    
+    if fields['date_start']:
+        fields['date_start'] = normalize_date(fields['date_start'])
         
     # Price
     text = soup.get_text().lower()

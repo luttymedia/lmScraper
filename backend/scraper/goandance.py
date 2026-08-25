@@ -60,12 +60,12 @@ class GoAndDanceScraper(BaseScraper):
                         event_contact.get('facebook') or org_contact.get('facebook') or
                         event_contact.get('website') or org_contact.get('website')
                     )
-
+                    from backend.scraper.extractors import normalize_date
                     event = {
                         'title': data.get('name', ''),
                         'description': data.get('shortDescription', ''),
-                        'date_start': data.get('dateFrom', ''),
-                        'date_end': data.get('dateTo', ''),
+                        'date_start': normalize_date(data.get('dateFrom', '')),
+                        'date_end': normalize_date(data.get('dateTo', '')),
                         'price': str(data.get('cache', {}).get('currentPrice', 'Free') if data.get('cache') else 'Free'),
                         'category': data.get('type', {}).get('caption', ''),
                         'city': data.get('address', {}).get('genericLocation', '').split(',')[0] if data.get('address') else '',

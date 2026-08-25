@@ -314,8 +314,12 @@ async def backup_db_for_import() -> str:
 
     return str(backup_path)
 
-async def purge_data(target: str = "full") -> dict:
-    """Delete targeted data from the DB and caches."""
+async def purge_data(target: str = "full", skip_locked: bool = True) -> dict:
+    """Delete targeted data from the DB and caches.
+    
+    If skip_locked is True (default), events with is_locked = 1 are preserved.
+    If skip_locked is False, ALL events are deleted regardless of lock status.
+    """
     freed_bytes = 0
     deleted_jobs = 0
     deleted_events = 0
@@ -324,11 +328,21 @@ async def purge_data(target: str = "full") -> dict:
     
     async with get_db() as db:
         if target in ("full", "results"):
-            cursor = await db.execute("DELETE FROM events")
+            if skip_locked:
+                cursor = await db.execute("DELETE FROM events WHERE is_locked = 0")
+            else:
+                cursor = await db.execute("DELETE FROM events")
             deleted_events = cursor.rowcount
-            cursor = await db.execute("DELETE FROM jobs")
+            if skip_locked:
+                cursor = await db.execute(
+                    "DELETE FROM jobs WHERE id NOT IN (SELECT DISTINCT job_id FROM events WHERE is_locked = 1)"
+                )
+            else:
+                cursor = await db.execute("DELETE FROM jobs")
             deleted_jobs = cursor.rowcount
-            await db.execute("DELETE FROM job_logs")
+            await db.execute(
+                "DELETE FROM job_logs WHERE job_id NOT IN (SELECT id FROM jobs)"
+            )
             
         if target in ("full", "schedules"):
             cursor = await db.execute("DELETE FROM schedules")
@@ -340,7 +354,13 @@ async def purge_data(target: str = "full") -> dict:
         await db.commit()
         await db.execute("VACUUM")
         
-    if target in ("full", "results"):
+    if target in ("full", "results") and not skip_locked:
+        if HTML_CACHE_DIR.exists():
+            freed_bytes = await get_dir_size(HTML_CACHE_DIR)
+            shutil.rmtree(HTML_CACHE_DIR)
+            HTML_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    elif target in ("full", "results") and skip_locked:
+        # Still wipe the cache dir since it's just HTML snapshots
         if HTML_CACHE_DIR.exists():
             freed_bytes = await get_dir_size(HTML_CACHE_DIR)
             shutil.rmtree(HTML_CACHE_DIR)

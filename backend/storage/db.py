@@ -55,6 +55,7 @@ async def init_db() -> None:
                 organizer_twitter TEXT,
                 organizer_website TEXT,
                 contact_hidden INTEGER DEFAULT 0,
+                is_locked INTEGER DEFAULT 0,
                 source_domain TEXT,
                 html_cache_path TEXT,
                 dance_style TEXT,
@@ -234,6 +235,12 @@ async def init_db() -> None:
         except aiosqlite.OperationalError:
             pass  # Column already exists
 
+        try:
+            await db.execute('ALTER TABLE events ADD COLUMN is_locked INTEGER DEFAULT 0')
+            await db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+
         # Clean up any orphaned events whose job_id was deleted
         try:
             await db.execute("DELETE FROM events WHERE job_id NOT IN (SELECT id FROM jobs)")
@@ -319,6 +326,14 @@ async def query_events(filters: dict, page: int, per_page: int) -> tuple[list[di
         pass  # No filter — show everything
     else:
         conditions.append("is_hidden = 0")
+
+    # show_locked: 'only' shows only locked, 'no' shows only unlocked, default shows all
+    show_locked = filters.get('show_locked', '')
+    if show_locked == 'only':
+        conditions.append("is_locked = 1")
+    elif show_locked == 'no':
+        conditions.append("is_locked = 0")
+    # else: no filter — show all lock states
     
     job_ids_raw = filters.get('job_ids') or filters.get('job_id')
     if job_ids_raw:
@@ -471,7 +486,7 @@ async def delete_events(filters: dict) -> int:
     if where_clause == "1=0":
         return 0
         
-    query = f"DELETE FROM events WHERE {where_clause}"
+    query = f"DELETE FROM events WHERE ({where_clause}) AND is_locked = 0"
     
     async with get_db() as db:
         cursor = await db.execute(query, params)
@@ -479,12 +494,45 @@ async def delete_events(filters: dict) -> int:
         return cursor.rowcount
 
 async def delete_events_older_than(days: int) -> int:
-    """Delete events older than specified days."""
-    query = "DELETE FROM events WHERE date(scraped_at) <= date('now', ?)"
+    """Delete events older than specified days, skipping locked rows."""
+    query = "DELETE FROM events WHERE date(scraped_at) <= date('now', ?) AND is_locked = 0"
     param = f"-{days} days"
     
     async with get_db() as db:
         cursor = await db.execute(query, (param,))
+        await db.commit()
+        return cursor.rowcount
+
+async def delete_events_by_ids(event_ids: list[int]) -> int:
+    """Delete specific events by their integer primary key IDs, skipping locked rows."""
+    if not event_ids:
+        return 0
+    placeholders = ', '.join(['?'] * len(event_ids))
+    query = f"DELETE FROM events WHERE id IN ({placeholders}) AND is_locked = 0"
+    async with get_db() as db:
+        cursor = await db.execute(query, event_ids)
+        await db.commit()
+        return cursor.rowcount
+
+async def set_event_lock(event_id: int, locked: bool) -> None:
+    """Set or clear the lock flag on a single event."""
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE events SET is_locked = ? WHERE id = ?",
+            (1 if locked else 0, event_id)
+        )
+        await db.commit()
+
+async def bulk_set_event_lock(event_ids: list[int], locked: bool) -> int:
+    """Set or clear the lock flag on multiple events. Returns the count updated."""
+    if not event_ids:
+        return 0
+    placeholders = ', '.join(['?'] * len(event_ids))
+    async with get_db() as db:
+        cursor = await db.execute(
+            f"UPDATE events SET is_locked = ? WHERE id IN ({placeholders})",
+            [1 if locked else 0] + list(event_ids)
+        )
         await db.commit()
         return cursor.rowcount
 
@@ -581,10 +629,10 @@ async def list_jobs(page: int, per_page: int) -> tuple[list[dict], int]:
     return jobs, total
 
 async def delete_job(job_id: str) -> None:
-    """Delete a job, its associated events, and logs."""
+    """Delete a job, its logs, and its non-locked events."""
     async with get_db() as db:
         await db.execute("DELETE FROM job_logs WHERE job_id = ?", (job_id,))
-        await db.execute("DELETE FROM events WHERE job_id = ?", (job_id,))
+        await db.execute("DELETE FROM events WHERE job_id = ? AND is_locked = 0", (job_id,))
         await db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
         await db.commit()
 
@@ -906,7 +954,7 @@ IMPORT_EDITABLE_FIELDS = [
     'organizer_phone', 'organizer_instagram', 'organizer_facebook',
     'organizer_tiktok', 'organizer_whatsapp', 'organizer_youtube',
     'organizer_twitter', 'organizer_website', 'contact_hidden',
-    'dance_style', 'platform', 'is_hidden',
+    'dance_style', 'platform', 'is_hidden', 'is_locked',
 ]
 
 async def get_events_by_ids(ids: list[int]) -> dict[int, dict]:

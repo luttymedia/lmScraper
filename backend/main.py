@@ -17,6 +17,7 @@ import urllib.request as urllib_request
 from backend.storage.db import (
     init_db, list_jobs, get_job, delete_job, insert_job, get_job_logs,
     query_events, delete_events as db_delete_events,
+    set_event_lock, bulk_set_event_lock, delete_events_by_ids,
     list_schedules, get_schedule, insert_session, list_sessions,
     delete_session, get_session_for_domain,
     list_groups, get_group, get_group_schedules
@@ -220,6 +221,7 @@ def parse_event_filters(
     sort_by: str | None = None,
     sort_dir: str | None = None,
     show_hidden: str | None = None,
+    show_locked: str | None = None,
 ) -> dict:
     return {
         "job_ids": job_ids or job_id, "updated_by_job_id": updated_by_job_id, "date_from": date_from, "date_to": date_to,
@@ -227,6 +229,7 @@ def parse_event_filters(
         "has_email": has_email, "has_phone": has_phone,
         "sort_by": sort_by, "sort_dir": sort_dir,
         "show_hidden": show_hidden or 'no',
+        "show_locked": show_locked or '',
     }
 
 @app.get("/api/events")
@@ -241,8 +244,9 @@ async def get_events_route(
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None,
     show_hidden: str | None = None,
+    show_locked: str | None = None,
 ):
-    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir, show_hidden)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir, show_hidden, show_locked)
     events, total = await query_events(filters, page, per_page)
     return {"events": events, "total": total, "page": page, "per_page": per_page}
 
@@ -250,6 +254,28 @@ async def get_events_route(
 async def delete_events_route(body: dict = Body(...)):
     deleted = await db_delete_events(body)
     return {"deleted": deleted}
+
+@app.post("/api/events/bulk-delete-by-ids")
+async def bulk_delete_events_by_ids_route(body: dict = Body(...)):
+    """Delete specific events by their integer IDs, skipping any that are locked."""
+    event_ids = [int(i) for i in body.get("event_ids", []) if str(i).strip().isdigit()]
+    deleted = await delete_events_by_ids(event_ids)
+    return {"deleted": deleted}
+
+@app.patch("/api/events/{event_id}/lock")
+async def set_event_lock_route(event_id: int, body: dict = Body(...)):
+    """Toggle the lock state of a single event."""
+    locked = bool(body.get("locked", True))
+    await set_event_lock(event_id, locked)
+    return {"event_id": event_id, "is_locked": 1 if locked else 0}
+
+@app.post("/api/events/bulk-lock")
+async def bulk_lock_events_route(body: dict = Body(...)):
+    """Set or clear the lock flag on a list of events."""
+    event_ids = [int(i) for i in body.get("event_ids", []) if str(i).isdigit()]
+    locked = bool(body.get("locked", True))
+    count = await bulk_set_event_lock(event_ids, locked)
+    return {"updated": count, "is_locked": 1 if locked else 0}
 
 @app.get("/api/events/export/csv")
 async def export_csv_route(
@@ -261,9 +287,10 @@ async def export_csv_route(
     has_contact: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None,
-    show_hidden: str | None = None
+    show_hidden: str | None = None,
+    show_locked: str | None = None,
 ):
-    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir, show_hidden)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir, show_hidden, show_locked)
     return await export_to_csv(filters)
 
 @app.get("/api/events/export/xlsx")
@@ -276,9 +303,10 @@ async def export_xlsx_route(
     has_contact: bool | None = None,
     has_email: bool | None = None, has_phone: bool | None = None,
     sort_by: str | None = None, sort_dir: str | None = None,
-    show_hidden: str | None = None
+    show_hidden: str | None = None,
+    show_locked: str | None = None,
 ):
-    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir, show_hidden)
+    filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir, show_hidden, show_locked)
     return await export_to_xlsx(filters)
 
 # API Routes - Import
@@ -546,9 +574,14 @@ async def compress_caches_route():
 async def purge_data_route(payload: dict = Body(...)):
     from backend.storage.monitor import purge_data
     target = payload.get("target", "full")
-    res = await purge_data(target)
+    skip_locked = payload.get("skip_locked", True)
+    res = await purge_data(target, skip_locked=skip_locked)
     mb = res['freed_bytes'] / (1024 * 1024)
-    return {"message": f"Purged targeted data. Freed {mb:.2f} MB of cache."}
+    locked_kept = res.get('locked_kept', 0)
+    msg = f"Purged targeted data. Freed {mb:.2f} MB of cache."
+    if locked_kept:
+        msg += f" {locked_kept} locked event(s) were preserved."
+    return {"message": msg, "result": res}
 
 @app.get("/api/monitor/backup")
 async def backup_route(target: str = "full"):

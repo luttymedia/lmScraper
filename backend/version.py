@@ -1,9 +1,22 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "2.1.0"
-RELEASE_DATE = "2026-08-17"
+VERSION = "2.2.0"
+RELEASE_DATE = "2026-08-25"
 
 CHANGELOG = [
+    {
+        "version": "2.2.0",
+        "date": "2026-08-25",
+        "title": "Row Locking & Deletion Protection",
+        "changes": [
+            "Added row locking mechanism ('is_locked') allowing records to be protected against all deletion paths while remaining editable",
+            "Added padlock indicator column as the first data column in the Results table with instant inline click-to-toggle",
+            "Added bulk lock, unlock, and safe delete actions with confirmation warnings for locked rows in the Results table",
+            "Added 'Locked' filter dropdown in Results to filter records by lock status (Any / Only Locked / Only Unlocked)",
+            "Updated database cleanup routines and purge tools to preserve locked rows by default with optional override options",
+            "Updated CSV and XLSX exports to include the 'locked' column right after record ID, with full roundtrip import support"
+        ]
+    },
     {
         "version": "2.1.0",
         "date": "2026-08-17",

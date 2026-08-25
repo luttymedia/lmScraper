@@ -83,10 +83,43 @@ def normalize_event_url(url: str) -> str:
     except Exception:
         return url.strip().lower()
 
+def normalize_date(date_str: str) -> str:
+    """Normalize a date string to 'YYYY-MM-DD HH:MM' for consistent hashing.
+
+    Handles the two formats GoAndDance produces:
+      - HTML / old scraper:  '25/09/2026 16:00'
+      - JSON API / new:      '2026-09-25T16:00:00.000+02:00'
+    Both normalize to '2026-09-25 16:00'.
+    Falls back to the raw string (lowercased) if neither pattern matches.
+    """
+    if not date_str:
+        return ""
+    s = date_str.strip()
+    # ISO 8601: 2026-09-25T16:00... (timezone suffix ignored for hashing)
+    m = re.match(r'(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})', s)
+    if m:
+        return m.group(1) + " " + m.group(2)
+    # DD/MM/YYYY HH:MM
+    m = re.match(r'(\d{2})/(\d{2})/(\d{4})\s+(\d{2}:\d{2})', s)
+    if m:
+        return m.group(3) + "-" + m.group(2) + "-" + m.group(1) + " " + m.group(4)
+    # YYYY-MM-DD (date only, no time)
+    m = re.match(r'(\d{4}-\d{2}-\d{2})$', s)
+    if m:
+        return s
+    # Fallback: return lowercased as-is
+    return s.lower()
+
 def content_hash(title: str, date: str, url: str) -> str:
-    """Compute deduplication hash using normalized URL."""
+    """Compute deduplication hash using normalized URL and normalized date.
+
+    Both the event URL and the date_start string are normalized before hashing
+    so that format differences (e.g. ISO-8601 vs DD/MM/YYYY) across scraper
+    versions do not cause the same real-world event to be treated as new.
+    """
     norm_url = normalize_event_url(url)
-    s = f"{title or ''}{date or ''}{norm_url}".lower().strip()
+    norm_date = normalize_date(date or '')
+    s = f"{title or ''}{norm_date}{norm_url}".lower().strip()
     return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
 def extract_event_fields(soup: BeautifulSoup, url: str, source_domain: str) -> dict:

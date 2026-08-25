@@ -17,7 +17,7 @@ from openpyxl.styles import PatternFill, Font
 # ---------------------------------------------------------------------------
 
 EXPORT_COLS = [
-    'record_id', 'hidden',
+    'record_id', 'locked', 'hidden',
     'title', 'date_start', 'date_end', 'city', 'country', 'venue', 'price',
     'event_type', 'dance_style', 'organizer_name', 'organizer_email',
     'organizer_phone', 'organizer_instagram', 'organizer_facebook',
@@ -64,6 +64,7 @@ async def get_events_df(filters: dict) -> pd.DataFrame:
         e['record_id'] = e.get('id')
         e['event_type'] = e.get('category')
         e['hidden'] = 'yes' if e.get('is_hidden') else 'no'
+        e['locked'] = 'yes' if e.get('is_locked') else 'no'
         events_export.append(e)
 
     df = pd.DataFrame(events_export)
@@ -127,9 +128,9 @@ async def export_to_xlsx(filters: dict) -> StreamingResponse:
             cell.fill = header_fill
             cell.font = header_font
 
-        # Style record_id and hidden columns in grey to signal they are system columns
+        # Style record_id, hidden, and locked columns in grey to signal they are system columns
         system_col_font = Font(color='888888', italic=True)
-        system_cols = {'record_id', 'hidden'}
+        system_cols = {'record_id', 'hidden', 'locked'}
         for col_idx, col_name in enumerate(df.columns, 1):
             if col_name in system_cols:
                 col_letter = worksheet.cell(row=1, column=col_idx).column_letter
@@ -186,6 +187,7 @@ IMPORT_COL_MAP = {
     'event_url': 'event_url',
     'platform': 'platform',
     'hidden': 'is_hidden',
+    'locked': 'is_locked',
 }
 
 # Read-only columns that are silently ignored if edited in the file
@@ -298,6 +300,14 @@ async def compute_import_diff(df: pd.DataFrame, mode: str) -> dict:
                         'yes' if old_val else 'no',
                         'yes' if new_val else 'no',
                     ]
+            elif file_col == 'locked':
+                new_val = _normalise_hidden(file_val)
+                old_val = db_row.get('is_locked', 0) or 0
+                if int(new_val) != int(old_val):
+                    field_changes['locked'] = [
+                        'yes' if old_val else 'no',
+                        'yes' if new_val else 'no',
+                    ]
             else:
                 old_val = db_row.get(db_col, '') or ''
                 
@@ -396,6 +406,8 @@ async def apply_import(diff: dict) -> dict:
             file_val = file_row.get(file_col, '')
             if file_col == 'hidden':
                 update['is_hidden'] = _normalise_hidden(file_val)
+            elif file_col == 'locked':
+                update['is_locked'] = _normalise_hidden(file_val)
             else:
                 update[db_col] = str(file_val).strip() if file_val != '' else None
         updates.append(update)

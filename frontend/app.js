@@ -785,6 +785,9 @@ function getColumnWidth(colId, defaultWidth) {
 
 const COLUMNS = [
   { id: 'bulk', sortable: false, defaultWidth: '44px', label: '<input type="checkbox" id="bulk-select-all">', render: (row) => `<input type="checkbox" class="row-checkbox" value="${row.id}">` },
+  { id: 'locked', sortKey: 'is_locked', defaultWidth: '40px', label: '🔒', render: (row) => row.is_locked
+    ? `<span class="icon-link lock-toggle" data-id="${row.id}" data-locked="1" title="Locked — click to unlock" style="cursor:pointer; color:var(--primary);">${ICONS.lock}</span>`
+    : `<span class="icon-link lock-toggle" data-id="${row.id}" data-locked="0" title="Unlocked — click to lock" style="cursor:pointer; opacity:0.25;">${ICONS.lock}</span>` },
   { id: 'title', sortKey: 'title', defaultWidth: '220px', label: 'Title', render: (row) => `<strong>${truncate(row.title || 'Untitled', 40)}</strong>` },
   { id: 'date', sortKey: 'date_start', defaultWidth: '170px', label: 'Date & Time', render: (row) => formatDate(row.date_start || row.start_date) },
   { id: 'city', sortKey: 'city', defaultWidth: '150px', label: 'City/Country', render: (row) => `${row.city || '—'} ${row.country ? `(${row.country})` : ''}` },
@@ -865,6 +868,7 @@ function getActiveFilters() {
     has_contact: document.getElementById('filter-contact')?.value || '',
     contact_hidden: document.getElementById('filter-hidden-contact')?.value || '',
     show_hidden: document.getElementById('filter-show-hidden')?.value || '',
+    show_locked: document.getElementById('filter-show-locked')?.value || '',
   };
 
   Object.keys(filters).forEach(k => {
@@ -1118,6 +1122,107 @@ document.getElementById('btn-export-csv').addEventListener('click', () => {
 document.getElementById('btn-export-xlsx').addEventListener('click', () => {
   const query = new URLSearchParams(getActiveFilters()).toString();
   window.open(`${API}/api/events/export/xlsx?${query}`, '_blank');
+});
+
+// ── Bulk Actions (Delete / Lock / Unlock) ────────────────────────────────────
+
+function getCheckedEventIds() {
+  return Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => parseInt(cb.value));
+}
+
+document.getElementById('btn-bulk-delete').addEventListener('click', async () => {
+  const ids = getCheckedEventIds();
+  if (!ids.length) return;
+
+  // Check how many are locked
+  const lockedSpans = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => {
+    const tr = cb.closest('tr');
+    return tr ? tr.querySelector('.lock-toggle') : null;
+  }).filter(Boolean);
+  const lockedCount = lockedSpans.filter(s => s.dataset.locked === '1').length;
+  const unlockCount = ids.length - lockedCount;
+
+  if (lockedCount > 0) {
+    const proceed = await confirmAction(
+      `${ids.length} rows selected: ${lockedCount} are locked and will be skipped, ${unlockCount} will be deleted. Proceed?`
+    );
+    if (!proceed) return;
+  } else {
+    const proceed = await confirmAction(`Delete ${ids.length} selected event(s)? This cannot be undone.`);
+    if (!proceed) return;
+  }
+
+  // The backend already skips locked rows, so we can send all IDs safely
+  // But we need job_ids context. For individual IDs we use a different approach:
+  // We'll call DELETE /api/events with specific event IDs by sending them as a list.
+  // However the current delete_events only supports job_id filtering, so we'll extend it.
+  // For now collect unique job_ids from checked rows, filtered to unlocked ones only.
+  const unlockedIds = Array.from(document.querySelectorAll('.row-checkbox:checked')).filter(cb => {
+    const tr = cb.closest('tr');
+    const lockEl = tr ? tr.querySelector('.lock-toggle') : null;
+    return lockEl && lockEl.dataset.locked === '0';
+  }).map(cb => parseInt(cb.value));
+
+  if (!unlockedIds.length) {
+    showToast('All selected rows are locked — nothing to delete.', 'info');
+    return;
+  }
+
+  await api('/api/events/bulk-delete-by-ids', { method: 'POST', body: JSON.stringify({ event_ids: unlockedIds }), headers: { 'Content-Type': 'application/json' } });
+  showToast(
+    lockedCount > 0
+      ? `Deleted ${unlockedIds.length} event(s). ${lockedCount} locked row(s) were preserved.`
+      : `Deleted ${unlockedIds.length} event(s).`,
+    'success'
+  );
+  loadResults();
+});
+
+document.getElementById('btn-bulk-lock').addEventListener('click', async () => {
+  const ids = getCheckedEventIds();
+  if (!ids.length) return showToast('No rows selected', 'error');
+  await api('/api/events/bulk-lock', { method: 'POST', body: JSON.stringify({ event_ids: ids, locked: true }), headers: { 'Content-Type': 'application/json' } });
+  showToast(`Locked ${ids.length} row(s).`, 'success');
+  loadResults();
+});
+
+document.getElementById('btn-bulk-unlock').addEventListener('click', async () => {
+  const ids = getCheckedEventIds();
+  if (!ids.length) return showToast('No rows selected', 'error');
+  await api('/api/events/bulk-lock', { method: 'POST', body: JSON.stringify({ event_ids: ids, locked: false }), headers: { 'Content-Type': 'application/json' } });
+  showToast(`Unlocked ${ids.length} row(s).`, 'success');
+  loadResults();
+});
+
+// ── Lock toggle (single row click on padlock icon) ───────────────────────────
+document.getElementById('results-tbody').addEventListener('click', async (e) => {
+  const toggle = e.target.closest('.lock-toggle');
+  if (!toggle) return;
+  const eventId = parseInt(toggle.dataset.id);
+  const isCurrentlyLocked = toggle.dataset.locked === '1';
+  const newLocked = !isCurrentlyLocked;
+
+  await api(`/api/events/${eventId}/lock`, {
+    method: 'PATCH',
+    body: JSON.stringify({ locked: newLocked }),
+    headers: { 'Content-Type': 'application/json' }
+  });
+
+  // Update the icon in place without full reload
+  if (newLocked) {
+    toggle.dataset.locked = '1';
+    toggle.title = 'Locked — click to unlock';
+    toggle.style.opacity = '1';
+    toggle.style.color = 'var(--primary)';
+  } else {
+    toggle.dataset.locked = '0';
+    toggle.title = 'Unlocked — click to lock';
+    toggle.style.opacity = '0.25';
+    toggle.style.color = '';
+  }
+  // Update the underlying data so the checkbox knows the state
+  const data = lastResultsData.find(r => r.id === eventId);
+  if (data) data.is_locked = newLocked ? 1 : 0;
 });
 
 // ── Import Modal ─────────────────────────────────────────────────────────────
@@ -3103,10 +3208,13 @@ document.getElementById('btn-clean-compress').addEventListener('click', async ()
 purgeBtn.addEventListener('click', async () => {
   if(purgeConfirm.value === 'DELETE') {
     const target = document.getElementById('purge-target').value;
+    const lockedMode = document.querySelector('input[name="purge-locked-mode"]:checked')?.value || 'skip';
+    const skipLocked = lockedMode === 'skip';
     let targetName = target === 'full' ? 'EVERYTHING (Jobs, Events, HTML Caches, Schedules, Groups)' : (target === 'results' ? 'Results & HTML Caches' : 'Schedules & Groups');
+    const lockedNote = skipLocked ? ' Locked rows will be preserved.' : ' ⚠️ ALL rows including locked ones will be deleted.';
     
-    if (await confirmAction(`WARNING: This will purge ${targetName}. Are you absolutely sure?`)) {
-      runCleanup('/api/monitor/cleanup/purge', { target });
+    if (await confirmAction(`WARNING: This will purge ${targetName}.${lockedNote} Are you absolutely sure?`)) {
+      runCleanup('/api/monitor/cleanup/purge', { target, skip_locked: skipLocked });
       purgeConfirm.value = '';
       purgeBtn.disabled = true;
     }

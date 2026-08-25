@@ -400,6 +400,11 @@
           <option value="all">Show All</option>
           <option value="only">Only Hidden</option>
         </select>
+        <select id="filter-show-locked" class="select btn-sm">
+          <option value="">Locked: Any</option>
+          <option value="only">Only Locked</option>
+          <option value="no">Only Unlocked</option>
+        </select>
         <div class="filter-actions-row">
           <button class="btn btn-primary btn-sm" id="btn-apply-filters">Apply</button>
           <button class="btn btn-ghost btn-sm" id="btn-reset-filters">Reset</button>
@@ -414,9 +419,10 @@
         </div>
       </div>
 
-      <div class="mb-4 hidden" id="bulk-actions">
-        <button class="btn btn-danger btn-sm" id="btn-bulk-delete"><i data-lucide="trash" class="icon-sm"></i> Delete
-          Selected</button>
+      <div class="mb-4 hidden" id="bulk-actions" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-danger btn-sm" id="btn-bulk-delete"><i data-lucide="trash" class="icon-sm"></i> Delete Selected</button>
+        <button class="btn btn-secondary btn-sm" id="btn-bulk-lock"><i data-lucide="lock" class="icon-sm"></i> Lock Selected</button>
+        <button class="btn btn-secondary btn-sm" id="btn-bulk-unlock"><i data-lucide="lock-open" class="icon-sm"></i> Unlock Selected</button>
       </div>
 
       <div class="table-wrapper">
@@ -862,6 +868,16 @@
                 <option value="results">Results & Cache Only</option>
                 <option value="schedules">Schedules & Groups Only</option>
               </select>
+              <div style="margin-bottom: 8px; font-size: 0.8rem; display:flex; flex-direction:column; gap:4px;">
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color: var(--text-muted);">
+                  <input type="radio" name="purge-locked-mode" id="purge-skip-locked" value="skip" checked>
+                  Preserve locked rows
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer; color: var(--error);">
+                  <input type="radio" name="purge-locked-mode" id="purge-all-locked" value="all">
+                  Purge everything (including locked)
+                </label>
+              </div>
               <div style="display:flex; align-items:center; gap: 8px;">
                 <input type="text" id="cleanup-purge-confirm" class="input" placeholder="Type DELETE" style="width: 120px; padding: 6px 12px; font-size: 0.875rem;">
                 <span style="font-size: 0.75rem; color:var(--error);">to confirm</span>

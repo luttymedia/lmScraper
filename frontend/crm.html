@@ -11,6 +11,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="/style.css">
   <style>
     /* CRM-specific custom layout overrides */
@@ -77,24 +80,21 @@
     .tab-switch {
       display: flex;
       align-items: center;
-      gap: 4px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      padding: 3px;
-      border-radius: var(--radius-card);
+      gap: 16px;
     }
 
     .tab-switch-btn {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 4px 10px;
+      padding: 0 4px 8px 4px;
+      margin-top: 8px; /* Push down to align bottom border nicely */
       font-size: 0.76rem;
       font-weight: 500;
       color: var(--text-secondary);
       background: transparent;
       border: none;
-      border-radius: var(--radius-btn);
+      border-bottom: 2px solid transparent;
       cursor: pointer;
       transition: all var(--transition);
     }
@@ -104,9 +104,117 @@
     }
 
     .tab-switch-btn.active {
-      background: var(--surface-elevated);
       color: var(--text-primary);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+      border-bottom-color: var(--text-primary);
+    }
+
+    .pipeline-summary-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      overflow-x: auto;
+      font-size: 0.72rem;
+    }
+    
+    .pipeline-summary-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--surface-elevated);
+      padding: 4px 10px;
+      border-radius: var(--radius-badge);
+      border: 1px solid var(--border);
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s ease;
+    }
+
+    .pipeline-summary-item:hover {
+      background: var(--surface-hover);
+      border-color: #10b981;
+    }
+
+    .pipeline-summary-item.active {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: #10b981;
+      box-shadow: 0 0 0 1px #10b981;
+    }
+    
+    .pipeline-summary-count {
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .kanban-col {
+      transition: background-color 0.2s ease, border-color 0.2s ease, outline 0.2s ease;
+    }
+
+    .kanban-col.drag-over {
+      background: var(--surface-hover) !important;
+      border-color: #10b981 !important;
+      outline: 2px dashed #10b981;
+      outline-offset: -2px;
+    }
+
+    .kanban-card {
+      user-select: none;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    }
+
+    .kanban-card:hover {
+      border-color: rgba(255, 255, 255, 0.2) !important;
+      transform: translateY(-1px);
+    }
+
+    .kanban-card.dragging {
+      opacity: 0.35;
+      transform: scale(0.97);
+    }
+    
+    .crm-table-container {
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background: var(--bg);
+    }
+    
+    .crm-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.75rem;
+    }
+    
+    .crm-table th {
+      position: sticky;
+      top: 0;
+      background: var(--surface);
+      color: var(--text-muted);
+      font-weight: 600;
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+      white-space: nowrap;
+    }
+    
+    .crm-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+      max-width: 200px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .crm-table tbody tr:hover {
+      background: var(--surface-hover);
+      cursor: pointer;
     }
 
     .badge-count {
@@ -739,23 +847,107 @@
     <div style="display:flex; align-items:center; gap:8px;">
       <a href="/" class="btn btn-secondary btn-sm"><i data-lucide="arrow-left"></i> Scraper Panel</a>
       <button class="btn btn-secondary btn-sm" id="btn-crm-settings"><i data-lucide="settings"></i> Settings</button>
-      <button class="btn btn-primary btn-sm" id="btn-crm-sync"><i data-lucide="refresh-cw"></i> Sync Organizers</button>
+      <button class="btn btn-secondary btn-sm" id="btn-crm-export-csv"><i data-lucide="download"></i> CSV</button>
+      <button class="btn btn-secondary btn-sm" id="btn-crm-export-xlsx"><i data-lucide="download"></i> XLSX</button>
+      <button class="btn btn-primary btn-sm" id="btn-crm-sync"><i data-lucide="refresh-cw"></i> Sync</button>
+      <button class="btn btn-primary btn-sm" id="btn-crm-add-lead" style="background: #10b981; color: #fff; border:none;"><i data-lucide="plus"></i> Add Lead</button>
     </div>
   </header>
 
   <!-- Subheader Switcher -->
-  <div class="sub-bar">
+  <div class="sub-bar" style="justify-content: space-between; gap: 16px;">
     <div class="tab-switch">
       <button class="tab-switch-btn active" data-tab="crm-pipeline">
-        <i data-lucide="kanban"></i> Pipeline View
+        <i data-lucide="list"></i> Split View
+      </button>
+      <button class="tab-switch-btn" data-tab="crm-kanban">
+        <i data-lucide="kanban"></i> Kanban
+      </button>
+      <button class="tab-switch-btn" data-tab="crm-table">
+        <i data-lucide="table"></i> Table
       </button>
       <button class="tab-switch-btn" data-tab="crm-alerts">
         <i data-lucide="alert-triangle"></i> Alerts
         <span id="crm-alerts-badge" class="badge-count" style="display: none;">0</span>
       </button>
+      <button class="tab-switch-btn" data-tab="crm-panel">
+        <i data-lucide="pie-chart"></i> Panel
+      </button>
     </div>
-    <div style="font-size: 0.72rem; color: var(--text-muted);">
-      Personal Outreach & Relationship Manager
+    
+    <div class="search-input-wrapper" style="width: 100%; max-width: 500px; margin-left: auto;">
+      <i data-lucide="search"></i>
+      <input type="text" id="crm-search" class="search-input" placeholder="Search organizer, event, email, city...">
+    </div>
+  </div>
+
+  <div class="pipeline-summary-bar" id="pipeline-summary-bar">
+    <!-- Populated by JS -->
+  </div>
+
+  <div id="bulk-actions-bar" class="hidden" style="display:flex; justify-content:space-between; padding: 8px 16px; background: var(--surface-hover); border-bottom: 1px solid var(--border); align-items:center;">
+    <span style="font-size:0.75rem; color:var(--text-primary);"><strong id="bulk-selected-count">0</strong> selected</span>
+    <div style="display:flex; gap: 5px; align-items:center;">
+      <select id="bulk-stage-select" class="custom-select" style="width:110px; height:24px; font-size:0.7rem; padding:0 8px;">
+        <option value="">Set Stage...</option>
+        <option value="identified">Identified</option>
+        <option value="shortlisted">Shortlisted</option>
+        <option value="contacted">Contacted</option>
+        <option value="awaiting_reply">Awaiting Reply</option>
+        <option value="follow_up_sent">Follow-up Sent</option>
+        <option value="response_received">Response Received</option>
+        <option value="converted">Converted</option>
+        <option value="rejected">Rejected</option>
+        <option value="cold">Cold</option>
+      </select>
+      <button class="btn btn-ghost" id="btn-bulk-merge" style="color:#6366f1; padding: 0 6px; height:24px; font-size:0.7rem; display:none; align-items:center; gap:4px;" title="Merge 2 Organizers"><i data-lucide="git-merge" style="width:12px;height:12px;"></i> Merge</button>
+      <button class="btn btn-ghost" id="btn-bulk-unarchive" style="color:#10b981; padding: 0 6px; height:24px; font-size:0.7rem;" title="Unarchive Selected"><i data-lucide="archive-restore" style="width:12px;height:12px;"></i></button>
+      <button class="btn btn-ghost" id="btn-bulk-archive" style="color:#f59e0b; padding: 0 6px; height:24px; font-size:0.7rem;" title="Archive Selected"><i data-lucide="archive" style="width:12px;height:12px;"></i></button>
+      <button class="btn btn-ghost" id="btn-bulk-hard-delete" style="color:#ef4444; padding: 0 6px; height:24px; font-size:0.7rem;" title="Permanently Delete Selected"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
+    </div>
+  </div>
+
+  <div class="global-filters-bar" style="padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px;">
+    <div class="filter-row" style="display: flex; gap: 10px;">
+      <select id="crm-filter-stage" class="custom-select" style="min-width: 150px;">
+        <option value="">All Stages</option>
+        <option value="identified">Identified</option>
+        <option value="shortlisted">Shortlisted</option>
+        <option value="contacted">Contacted</option>
+        <option value="awaiting_reply">Awaiting Reply</option>
+        <option value="follow_up_sent">Follow-up Sent</option>
+        <option value="response_received">Response Received</option>
+        <option value="converted">Converted</option>
+        <option value="rejected">Rejected</option>
+        <option value="cold">Cold</option>
+      </select>
+      <select id="crm-filter-contact" class="custom-select" style="min-width: 150px;">
+        <option value="">Contact Info: All</option>
+        <option value="any">Has Contact Info</option>
+        <option value="none">No Contact Info</option>
+        <option value="email">Has Email</option>
+        <option value="instagram">Has Instagram</option>
+        <option value="whatsapp">Has WhatsApp</option>
+        <option value="phone">Has Phone</option>
+        <option value="facebook">Has Facebook</option>
+      </select>
+      <select id="crm-sort" class="custom-select" style="min-width: 150px;">
+        <option value="alpha_asc">Sort: Name (A-Z)</option>
+        <option value="alpha_desc">Sort: Name (Z-A)</option>
+        <option value="events_desc">Sort: Most Events</option>
+        <option value="contact_recent">Sort: Recently Contacted</option>
+        <option value="contact_oldest">Sort: Needs Follow-up</option>
+      </select>
+      <select id="crm-filter-status" class="custom-select" style="min-width: 150px;">
+        <option value="">Any Status (Active)</option>
+        <option value="uncontacted">Uncontacted (Active)</option>
+        <option value="overdue">Overdue (>7 Days)</option>
+        <option value="archived">Archived</option>
+      </select>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 0.8rem; color: var(--text-primary);"><strong id="crm-list-count">0</strong> found</span>
+        <button id="btn-clear-filters" class="btn btn-secondary btn-sm">Reset</button>
+      </div>
     </div>
   </div>
 
@@ -767,82 +959,12 @@
       
       <!-- Left Panel -->
       <div class="list-panel">
-        <div class="list-search-box">
-          <div class="search-input-wrapper">
-            <i data-lucide="search"></i>
-            <input type="text" id="crm-search" class="search-input" placeholder="Search organizer, event, email, city...">
-          </div>
-
-          <div class="filter-row">
-            <select id="crm-filter-stage" class="custom-select">
-              <option value="">All Stages</option>
-              <option value="identified">Identified</option>
-              <option value="contacted">Contacted</option>
-              <option value="awaiting_reply">Awaiting Reply</option>
-              <option value="follow_up_sent">Follow-up Sent</option>
-              <option value="response_received">Response Received</option>
-              <option value="converted">Converted</option>
-              <option value="rejected">Rejected</option>
-              <option value="cold">Cold</option>
-            </select>
-            <select id="crm-filter-contact" class="custom-select">
-              <option value="">Contact Info: All (Default)</option>
-              <option value="any">Has Contact Info</option>
-              <option value="none">No Contact Info</option>
-              <option value="email">Has Email</option>
-              <option value="instagram">Has Instagram</option>
-              <option value="whatsapp">Has WhatsApp</option>
-              <option value="phone">Has Phone</option>
-              <option value="facebook">Has Facebook</option>
-            </select>
-          </div>
-          
-          <div class="filter-row">
-            <select id="crm-sort" class="custom-select">
-              <option value="alpha_asc">Sort: Name (A-Z)</option>
-              <option value="alpha_desc">Sort: Name (Z-A)</option>
-              <option value="events_desc">Sort: Most Events</option>
-              <option value="contact_recent">Sort: Recently Contacted</option>
-              <option value="contact_oldest">Sort: Needs Follow-up</option>
-            </select>
-            <select id="crm-filter-status" class="custom-select">
-              <option value="">Any Status (Active)</option>
-              <option value="uncontacted">Uncontacted (Active)</option>
-              <option value="overdue">Overdue (>7 Days)</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
-
-          <div class="list-stats-bar">
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.75rem; color:var(--text-secondary);">
-              <input type="checkbox" id="crm-select-all" style="cursor:pointer;">
-              <span><strong id="crm-list-count" style="color:var(--text-primary);">0</strong> found</span>
-            </label>
-            <button id="btn-clear-filters">Reset filters</button>
-          </div>
-
-          <div id="bulk-actions-bar" class="hidden" style="display:flex; justify-content:space-between; padding: 8px 14px; background: var(--surface-hover); border-bottom: 1px solid var(--border); align-items:center;">
-            <span style="font-size:0.75rem; color:var(--text-primary);"><strong id="bulk-selected-count">0</strong> selected</span>
-            <div style="display:flex; gap: 5px; align-items:center;">
-              <select id="bulk-stage-select" class="custom-select" style="width:110px; height:24px; font-size:0.7rem; padding:0 8px;">
-                <option value="">Set Stage...</option>
-                <option value="identified">Identified</option>
-                <option value="contacted">Contacted</option>
-                <option value="awaiting_reply">Awaiting Reply</option>
-                <option value="follow_up_sent">Follow-up Sent</option>
-                <option value="response_received">Response Received</option>
-                <option value="converted">Converted</option>
-                <option value="rejected">Rejected</option>
-                <option value="cold">Cold</option>
-              </select>
-              <button class="btn btn-ghost" id="btn-bulk-merge" style="color:#6366f1; padding: 0 6px; height:24px; font-size:0.7rem; display:none; align-items:center; gap:4px;" title="Merge 2 Organizers"><i data-lucide="git-merge" style="width:12px;height:12px;"></i> Merge</button>
-              <button class="btn btn-ghost" id="btn-bulk-unarchive" style="color:#10b981; padding: 0 6px; height:24px; font-size:0.7rem;" title="Unarchive Selected"><i data-lucide="archive-restore" style="width:12px;height:12px;"></i></button>
-              <button class="btn btn-ghost" id="btn-bulk-archive" style="color:#f59e0b; padding: 0 6px; height:24px; font-size:0.7rem;" title="Archive Selected"><i data-lucide="archive" style="width:12px;height:12px;"></i></button>
-              <button class="btn btn-ghost" id="btn-bulk-hard-delete" style="color:#ef4444; padding: 0 6px; height:24px; font-size:0.7rem;" title="Permanently Delete Selected"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
-            </div>
-          </div>
+        <div class="list-stats-bar" style="border-bottom: 1px solid var(--border); padding: 8px 16px;">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.75rem; color:var(--text-secondary);">
+            <input type="checkbox" id="crm-select-all" style="cursor:pointer;">
+            <span>Select all in list</span>
+          </label>
         </div>
-
         <div class="organizers-scroll" id="crm-organizers-list">
           <!-- Organizer cards injected via JS -->
         </div>
@@ -884,6 +1006,7 @@
                 <label>Stage:</label>
                 <select id="crm-detail-stage" class="stage-select">
                   <option value="identified">Identified</option>
+                  <option value="shortlisted">Shortlisted</option>
                   <option value="contacted">Contacted</option>
                   <option value="awaiting_reply">Awaiting Reply</option>
                   <option value="follow_up_sent">Follow-up Sent</option>
@@ -977,7 +1100,92 @@
 
     </div>
 
-    <!-- Tab 2: Alerts View -->
+    <!-- Tab 2: Table View -->
+    <div class="tab-view" id="tab-crm-table" style="flex-direction: column;">
+      
+      <div style="display:flex; justify-content:flex-end; padding: 8px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0;">
+        <div style="display:flex; align-items:center; gap:12px; font-size:0.75rem; color:var(--text-secondary);">
+          <div style="display:flex; align-items:center; gap:4px;">
+            <span>Rows per page:</span>
+            <select id="crm-table-page-size" class="custom-select" style="width:60px;">
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="500">500</option>
+              <option value="999999">All</option>
+            </select>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span id="crm-table-page-info">1-50 of 0</span>
+            <div style="display:flex; gap:4px;">
+              <button class="icon-btn" id="crm-table-prev-page"><i data-lucide="chevron-left" style="width:14px;height:14px;"></i></button>
+              <button class="icon-btn" id="crm-table-next-page"><i data-lucide="chevron-right" style="width:14px;height:14px;"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="crm-table-container">
+        <table class="crm-table">
+          <thead>
+            <tr>
+              <th style="width: 30px;"><input type="checkbox" id="crm-table-select-all"></th>
+              <th class="sortable-header" data-sort="name" style="cursor:pointer;">Organizer <i data-lucide="chevrons-up-down" style="width:12px;height:12px;display:inline-block;vertical-align:middle;opacity:0.4;"></i></th>
+              <th class="sortable-header" data-sort="pipeline_stage" style="cursor:pointer;">Stage <i data-lucide="chevrons-up-down" style="width:12px;height:12px;display:inline-block;vertical-align:middle;opacity:0.4;"></i></th>
+              <th class="sortable-header" data-sort="city" style="cursor:pointer;">Location <i data-lucide="chevrons-up-down" style="width:12px;height:12px;display:inline-block;vertical-align:middle;opacity:0.4;"></i></th>
+              <th class="sortable-header" data-sort="event_count" style="cursor:pointer;">Events <i data-lucide="chevrons-up-down" style="width:12px;height:12px;display:inline-block;vertical-align:middle;opacity:0.4;"></i></th>
+              <th>Contact Info</th>
+              <th class="sortable-header" data-sort="last_contact_date" style="cursor:pointer;">Last Contact <i data-lucide="chevrons-up-down" style="width:12px;height:12px;display:inline-block;vertical-align:middle;opacity:0.4;"></i></th>
+            </tr>
+          </thead>
+          <tbody id="crm-table-body">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab Kanban View -->
+    <div class="tab-view" id="tab-crm-kanban" style="overflow-x:auto; padding: 16px; gap: 16px; background:var(--bg); flex-wrap: nowrap; align-items:flex-start;">
+      <!-- Populated by JS -->
+    </div>
+
+    <!-- Panel View -->
+    <div class="tab-view" id="tab-crm-panel" style="padding: 24px; overflow-y: auto; flex-direction: column; gap: 24px;">
+      <h2>Analytics Dashboard</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        
+        <div class="card" style="padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);">
+          <h3 style="margin-top: 0; font-size: 1rem;">Pipeline Distribution</h3>
+          <div style="position: relative; height: 250px;">
+            <canvas id="pipeline-chart"></canvas>
+          </div>
+        </div>
+
+        <div class="card" style="padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);">
+          <h3 style="margin-top: 0; font-size: 1rem;">Top Locations</h3>
+          <div style="position: relative; height: 250px;">
+            <canvas id="locations-chart"></canvas>
+          </div>
+        </div>
+
+        <div class="card" style="padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);">
+          <h3 style="margin-top: 0; font-size: 1rem;">Available Contact Channels</h3>
+          <div style="position: relative; height: 250px;">
+            <canvas id="channels-chart"></canvas>
+          </div>
+        </div>
+
+        <div class="card" style="padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);">
+          <h3 style="margin-top: 0; font-size: 1rem;">Organizer Size (by Events)</h3>
+          <div style="position: relative; height: 250px;">
+            <canvas id="events-chart"></canvas>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Tab 3: Alerts View -->
     <div class="tab-view" id="tab-crm-alerts">
       <div class="alerts-container">
         <div style="display:flex; align-items:center; justify-content:space-between;">
@@ -994,6 +1202,78 @@
       </div>
     </div>
 
+  </div>
+
+  <!-- Modal: Add Lead -->
+  <div class="modal-overlay hidden" id="crm-add-lead-modal">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>Add New Lead</span>
+        <button type="button" class="icon-btn" onclick="crm.closeModal('crm-add-lead-modal')"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; max-height: 60vh; overflow-y: auto;">
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Name</label>
+          <input type="text" id="add-lead-name" class="input" placeholder="Organization or Person Name">
+        </div>
+        <div class="form-group">
+          <label>Stage</label>
+          <select id="add-lead-stage" class="custom-select" style="width:100%;">
+            <option value="identified">Identified</option>
+            <option value="shortlisted">Shortlisted</option>
+            <option value="contacted">Contacted</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="add-lead-email" class="input" placeholder="email@example.com">
+        </div>
+        <div class="form-group">
+          <label>Phone / WhatsApp</label>
+          <input type="text" id="add-lead-phone" class="input" placeholder="+123456789">
+        </div>
+        <div class="form-group">
+          <label>Website</label>
+          <input type="text" id="add-lead-website" class="input" placeholder="https://...">
+        </div>
+        <div class="form-group">
+          <label>Instagram</label>
+          <input type="text" id="add-lead-instagram" class="input" placeholder="username">
+        </div>
+        <div class="form-group">
+          <label>Facebook</label>
+          <input type="text" id="add-lead-facebook" class="input" placeholder="Profile URL">
+        </div>
+        <div class="form-group">
+          <label>TikTok</label>
+          <input type="text" id="add-lead-tiktok" class="input" placeholder="@username">
+        </div>
+        <div class="form-group">
+          <label>YouTube</label>
+          <input type="text" id="add-lead-youtube" class="input" placeholder="Channel URL">
+        </div>
+        <div class="form-group">
+          <label>Twitter</label>
+          <input type="text" id="add-lead-twitter" class="input" placeholder="@username">
+        </div>
+        <div class="form-group">
+          <label>City</label>
+          <input type="text" id="add-lead-city" class="input" placeholder="City">
+        </div>
+        <div class="form-group">
+          <label>Country</label>
+          <input type="text" id="add-lead-country" class="input" placeholder="Country">
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Event Names</label>
+          <input type="text" id="add-lead-events" class="input" placeholder="e.g. Summer Festival 2024 (comma separated)">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="crm.closeModal('crm-add-lead-modal')">Cancel</button>
+        <button class="btn btn-primary" id="btn-submit-add-lead">Create Lead</button>
+      </div>
+    </div>
   </div>
 
   <!-- Modal: CRM Settings -->

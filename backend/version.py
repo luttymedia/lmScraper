@@ -1,9 +1,18 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "3.0.0"
-RELEASE_DATE = "2026-08-25"
+VERSION = "3.1.0"
+RELEASE_DATE = "2026-08-26"
 
 CHANGELOG = [
+    {
+        "version": "3.1.0",
+        "date": "2026-08-26",
+        "title": "CRM Views & Manual Lead Creation",
+        "changes": [
+            "Added multiple CRM workspace views: Kanban Board, Table View, and Analytics Dashboard Panel",
+            "Added manual lead creation ('+ Add Lead') to create and manage organizers directly"
+        ]
+    },
     {
         "version": "3.0.0",
         "date": "2026-08-25",

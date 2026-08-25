@@ -14,14 +14,14 @@ call venv\Scripts\activate.bat
 
 echo.
 echo  ============================================
-echo   LMScraper is starting...
-echo   Open http://localhost:8000 in your browser
+echo   LMScraper CRM is starting...
+echo   Open http://localhost:8000/crm in your browser
 echo   Press Ctrl+C to stop
 echo  ============================================
 echo.
 
 REM ── Open browser after 2 seconds ─────────────────────────────────────────────
-start /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:8000"
+start /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:8000/crm"
 
 REM ── Start FastAPI server ─────────────────────────────────────────────────────
 python run_server.py

@@ -98,6 +98,25 @@ async def get_organizer_by_id(org_id: str):
     org['event_names'] = [e['title'] for e in events if e.get('title')]
     return org
 
+@router.post("/organizers")
+async def create_organizer(payload: OrganizerUpdate):
+    if not payload.name:
+        raise HTTPException(status_code=400, detail="Name is required")
+        
+    new_id = str(uuid.uuid4())
+    insert_data = {k: v for k, v in payload.dict().items() if v is not None}
+    insert_data['id'] = new_id
+    
+    if 'pipeline_stage' not in insert_data:
+        insert_data['pipeline_stage'] = 'identified'
+        
+    insert_data['source_event_ids'] = '[]'
+    insert_data['event_count'] = 0
+    insert_data['is_archived'] = 0
+    
+    await upsert_organizer(insert_data)
+    return {"status": "ok", "id": new_id}
+
 @router.patch("/organizers/{org_id}")
 async def update_organizer(org_id: str, payload: OrganizerUpdate):
     org = await get_organizer(org_id)

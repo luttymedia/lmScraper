@@ -833,6 +833,300 @@
       color: var(--text-muted);
       font-size: 0.7rem;
     }
+    .mobile-back-btn,
+    .mobile-filters-toggle,
+    .mobile-collapse-header {
+      display: none !important;
+    }
+
+    /* Modals must ALWAYS appear above full-screen mobile views */
+    .modal-overlay {
+      z-index: 9999999 !important;
+    }
+
+    /* ── Mobile Responsive Overrides ── */
+    @media (max-width: 768px) {
+      /* Header & Navigation */
+      header {
+        height: auto;
+        padding: 8px 12px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      header > div:last-child {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        flex-wrap: nowrap;
+      }
+      header > div:last-child button,
+      header > div:last-child a {
+        white-space: nowrap;
+      }
+
+      /* Sub-bar (Search & Tabs) */
+      .sub-bar {
+        height: auto;
+        flex-direction: column;
+        align-items: stretch;
+        padding: 8px 12px;
+        gap: 12px;
+      }
+      .tab-switch {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        border-bottom: 1px solid var(--border);
+      }
+      .tab-switch-btn {
+        white-space: nowrap;
+      }
+      .search-input-wrapper {
+        margin-left: 0 !important;
+        max-width: 100% !important;
+      }
+
+      /* Filters Bar */
+      .global-filters-bar {
+        padding: 12px !important;
+      }
+      .global-filters-bar .filter-row {
+        flex-wrap: wrap;
+      }
+      .global-filters-bar .filter-row select {
+        flex: 1;
+        min-width: 45%;
+      }
+
+      /* Pipeline Summary Bar */
+      .pipeline-summary-bar {
+        padding: 8px 12px;
+      }
+
+      /* Bulk Actions */
+      #bulk-actions-bar {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 8px;
+        padding: 12px !important;
+      }
+      #bulk-actions-bar > div {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+
+      /* Detail Full Screen on Mobile */
+      .detail-content.active {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 99999;
+        background: var(--bg);
+      }
+      
+      .mobile-back-btn {
+        display: flex !important;
+        margin-bottom: 12px;
+        width: fit-content;
+      }
+      
+      .mobile-filters-toggle {
+        display: flex !important;
+      }
+      
+      .mobile-collapsed {
+        display: none !important;
+      }
+      
+      /* Split View (#tab-crm-pipeline) */
+      #tab-crm-pipeline {
+        flex-direction: column !important;
+      }
+      .list-panel {
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        height: 100% !important;
+        border-right: none;
+      }
+      .detail-panel {
+        width: 100% !important;
+      }
+
+      /* Detail Header inside Split View */
+      .detail-header {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 12px;
+      }
+      .mobile-back-btn {
+        align-self: flex-start;
+      }
+      .detail-header .detail-actions {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+      .detail-header .detail-actions button {
+        flex: 1;
+        justify-content: center;
+      }
+
+      /* Dashboard Panel (#tab-crm-panel) */
+      #tab-crm-panel > div:nth-of-type(1) {
+        grid-template-columns: 1fr !important;
+      }
+      
+      /* Modals */
+      .modal {
+        width: 92% !important;
+        max-width: 92% !important;
+        margin: 10px auto !important;
+        padding: 18px !important;
+        max-height: 90vh !important;
+        overflow-y: auto !important;
+      }
+      .modal-body [style*="grid-template-columns: 1fr 1fr"],
+      .modal-body[style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+      }
+
+      /* Stack detail-top-row */
+      .detail-top-row {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px;
+      }
+      .detail-title-group {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 4px;
+      }
+      .stage-selector {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start !important;
+        gap: 8px;
+      }
+      
+      /* Make edit button larger tap target on mobile */
+      #btn-crm-edit-profile {
+        padding: 12px;
+        margin: -12px 0; /* visually keep same position but larger tap area */
+        position: relative;
+        z-index: 10;
+        cursor: pointer;
+        pointer-events: auto;
+      }
+
+      /* Give all interactive buttons massive z-index so they don't get covered */
+      .detail-action-bar .btn,
+      #btn-crm-edit-profile,
+      .mobile-back-btn,
+      .channel-btn {
+        position: relative !important;
+        z-index: 999999 !important;
+        pointer-events: auto !important;
+      }
+
+      /* Hide text in action buttons to keep them as icons on mobile */
+      .detail-action-bar .btn {
+        padding: 10px !important;
+      }
+      .detail-action-bar .btn span {
+        display: none !important;
+      }
+      .detail-action-bar .btn i {
+        margin: 0 !important;
+        width: 18px;
+        height: 18px;
+      }
+      
+      /* Detail Body Grid layout to column */
+      .detail-body-grid {
+        grid-template-columns: 1fr !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+      .detail-body-grid > div {
+        height: auto !important;
+      }
+
+      /* Mobile Accordion Logic */
+      .mobile-collapse-box {
+        flex: none !important; /* Stop empty boxes from taking up 1.2 flex space */
+        min-height: 0 !important; /* Override desktop 240px min-height */
+        height: auto !important;
+      }
+      .mobile-collapse-box .detail-box-content,
+      .contact-collapse .detail-channels-bar {
+        display: none !important;
+      }
+      .mobile-collapse-box.open .detail-box-content,
+      .contact-collapse.open .detail-channels-bar {
+        display: block !important;
+      }
+      .contact-collapse.open .detail-channels-bar {
+        display: flex !important;
+        padding: 12px !important;
+      }
+      
+      .mobile-collapse-header,
+      .mobile-collapse-box .detail-box-header {
+        cursor: pointer;
+        display: flex !important;
+        align-items: center;
+        justify-content: flex-start !important; /* Align left so flex: 1 pushes right */
+      }
+      
+      /* Push caret and subtitle to the right */
+      .mobile-collapse-box .detail-box-title,
+      .mobile-collapse-header > span {
+        flex: 1;
+      }
+      
+      /* Make contact channels box look like a detail-box on mobile */
+      .contact-collapse {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-card);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        flex: none !important;
+      }
+      
+      .mobile-collapse-header {
+        display: flex !important;
+        align-items: center;
+        justify-content: flex-start !important;
+        padding: 12px 16px;
+        background: var(--surface-hover);
+        border-bottom: 1px solid var(--border);
+        font-weight: 600;
+        color: var(--text-primary);
+        font-size: 0.8rem;
+        cursor: pointer;
+        margin: 0 !important;
+      }
+      
+      .mobile-collapse-header::after,
+      .mobile-collapse-box .detail-box-header::after {
+        content: "▼";
+        font-size: 0.65rem;
+        transition: transform 0.2s;
+        opacity: 0.6;
+        margin-left: 8px;
+      }
+      
+      .mobile-collapse-box.open .mobile-collapse-header::after,
+      .mobile-collapse-box.open .detail-box-header::after {
+        transform: rotate(180deg);
+      }
+    }
   </style>
 </head>
 <body>
@@ -875,78 +1169,85 @@
       </button>
     </div>
     
-    <div class="search-input-wrapper" style="width: 100%; max-width: 500px; margin-left: auto;">
-      <i data-lucide="search"></i>
-      <input type="text" id="crm-search" class="search-input" placeholder="Search organizer, event, email, city...">
+    <div style="display: flex; gap: 8px; width: 100%; max-width: 500px; margin-left: auto;">
+      <div class="search-input-wrapper" style="flex: 1;">
+        <i data-lucide="search"></i>
+        <input type="text" id="crm-search" class="search-input" placeholder="Search organizer, event, email, city...">
+      </div>
+      <button class="btn btn-secondary btn-sm mobile-filters-toggle" onclick="document.getElementById('mobile-collapsible-filters').classList.toggle('mobile-collapsed')" title="Toggle Filters">
+        <i data-lucide="filter" style="width: 14px; height: 14px;"></i> Filters
+      </button>
     </div>
   </div>
 
-  <div class="pipeline-summary-bar" id="pipeline-summary-bar">
-    <!-- Populated by JS -->
-  </div>
-
-  <div id="bulk-actions-bar" class="hidden" style="display:flex; justify-content:space-between; padding: 8px 16px; background: var(--surface-hover); border-bottom: 1px solid var(--border); align-items:center;">
-    <span style="font-size:0.75rem; color:var(--text-primary);"><strong id="bulk-selected-count">0</strong> selected</span>
-    <div style="display:flex; gap: 5px; align-items:center;">
-      <select id="bulk-stage-select" class="custom-select" style="width:110px; height:24px; font-size:0.7rem; padding:0 8px;">
-        <option value="">Set Stage...</option>
-        <option value="identified">Identified</option>
-        <option value="shortlisted">Shortlisted</option>
-        <option value="contacted">Contacted</option>
-        <option value="awaiting_reply">Awaiting Reply</option>
-        <option value="follow_up_sent">Follow-up Sent</option>
-        <option value="response_received">Response Received</option>
-        <option value="converted">Converted</option>
-        <option value="rejected">Rejected</option>
-        <option value="cold">Cold</option>
-      </select>
-      <button class="btn btn-ghost" id="btn-bulk-merge" style="color:#6366f1; padding: 0 6px; height:24px; font-size:0.7rem; display:none; align-items:center; gap:4px;" title="Merge 2 Organizers"><i data-lucide="git-merge" style="width:12px;height:12px;"></i> Merge</button>
-      <button class="btn btn-ghost" id="btn-bulk-unarchive" style="color:#10b981; padding: 0 6px; height:24px; font-size:0.7rem;" title="Unarchive Selected"><i data-lucide="archive-restore" style="width:12px;height:12px;"></i></button>
-      <button class="btn btn-ghost" id="btn-bulk-archive" style="color:#f59e0b; padding: 0 6px; height:24px; font-size:0.7rem;" title="Archive Selected"><i data-lucide="archive" style="width:12px;height:12px;"></i></button>
-      <button class="btn btn-ghost" id="btn-bulk-hard-delete" style="color:#ef4444; padding: 0 6px; height:24px; font-size:0.7rem;" title="Permanently Delete Selected"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
+  <div id="mobile-collapsible-filters" class="mobile-collapsed">
+    <div class="pipeline-summary-bar" id="pipeline-summary-bar">
+      <!-- Populated by JS -->
     </div>
-  </div>
 
-  <div class="global-filters-bar" style="padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px;">
-    <div class="filter-row" style="display: flex; gap: 10px;">
-      <select id="crm-filter-stage" class="custom-select" style="min-width: 150px;">
-        <option value="">All Stages</option>
-        <option value="identified">Identified</option>
-        <option value="shortlisted">Shortlisted</option>
-        <option value="contacted">Contacted</option>
-        <option value="awaiting_reply">Awaiting Reply</option>
-        <option value="follow_up_sent">Follow-up Sent</option>
-        <option value="response_received">Response Received</option>
-        <option value="converted">Converted</option>
-        <option value="rejected">Rejected</option>
-        <option value="cold">Cold</option>
-      </select>
-      <select id="crm-filter-contact" class="custom-select" style="min-width: 150px;">
-        <option value="">Contact Info: All</option>
-        <option value="any">Has Contact Info</option>
-        <option value="none">No Contact Info</option>
-        <option value="email">Has Email</option>
-        <option value="instagram">Has Instagram</option>
-        <option value="whatsapp">Has WhatsApp</option>
-        <option value="phone">Has Phone</option>
-        <option value="facebook">Has Facebook</option>
-      </select>
-      <select id="crm-sort" class="custom-select" style="min-width: 150px;">
-        <option value="alpha_asc">Sort: Name (A-Z)</option>
-        <option value="alpha_desc">Sort: Name (Z-A)</option>
-        <option value="events_desc">Sort: Most Events</option>
-        <option value="contact_recent">Sort: Recently Contacted</option>
-        <option value="contact_oldest">Sort: Needs Follow-up</option>
-      </select>
-      <select id="crm-filter-status" class="custom-select" style="min-width: 150px;">
-        <option value="">Any Status (Active)</option>
-        <option value="uncontacted">Uncontacted (Active)</option>
-        <option value="overdue">Overdue (>7 Days)</option>
-        <option value="archived">Archived</option>
-      </select>
-      <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
-        <span style="font-size: 0.8rem; color: var(--text-primary);"><strong id="crm-list-count">0</strong> found</span>
-        <button id="btn-clear-filters" class="btn btn-secondary btn-sm">Reset</button>
+    <div id="bulk-actions-bar" class="hidden" style="display:flex; justify-content:space-between; padding: 8px 16px; background: var(--surface-hover); border-bottom: 1px solid var(--border); align-items:center;">
+      <span style="font-size:0.75rem; color:var(--text-primary);"><strong id="bulk-selected-count">0</strong> selected</span>
+      <div style="display:flex; gap: 5px; align-items:center;">
+        <select id="bulk-stage-select" class="custom-select" style="width:110px; height:24px; font-size:0.7rem; padding:0 8px;">
+          <option value="">Set Stage...</option>
+          <option value="identified">Identified</option>
+          <option value="shortlisted">Shortlisted</option>
+          <option value="contacted">Contacted</option>
+          <option value="awaiting_reply">Awaiting Reply</option>
+          <option value="follow_up_sent">Follow-up Sent</option>
+          <option value="response_received">Response Received</option>
+          <option value="converted">Converted</option>
+          <option value="rejected">Rejected</option>
+          <option value="cold">Cold</option>
+        </select>
+        <button class="btn btn-ghost" id="btn-bulk-merge" style="color:#6366f1; padding: 0 6px; height:24px; font-size:0.7rem; display:none; align-items:center; gap:4px;" title="Merge 2 Organizers"><i data-lucide="git-merge" style="width:12px;height:12px;"></i> Merge</button>
+        <button class="btn btn-ghost" id="btn-bulk-unarchive" style="color:#10b981; padding: 0 6px; height:24px; font-size:0.7rem;" title="Unarchive Selected"><i data-lucide="archive-restore" style="width:12px;height:12px;"></i></button>
+        <button class="btn btn-ghost" id="btn-bulk-archive" style="color:#f59e0b; padding: 0 6px; height:24px; font-size:0.7rem;" title="Archive Selected"><i data-lucide="archive" style="width:12px;height:12px;"></i></button>
+        <button class="btn btn-ghost" id="btn-bulk-hard-delete" style="color:#ef4444; padding: 0 6px; height:24px; font-size:0.7rem;" title="Permanently Delete Selected"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
+      </div>
+    </div>
+
+    <div class="global-filters-bar" style="padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px;">
+      <div class="filter-row" style="display: flex; gap: 10px;">
+        <select id="crm-filter-stage" class="custom-select" style="min-width: 150px;">
+          <option value="">All Stages</option>
+          <option value="identified">Identified</option>
+          <option value="shortlisted">Shortlisted</option>
+          <option value="contacted">Contacted</option>
+          <option value="awaiting_reply">Awaiting Reply</option>
+          <option value="follow_up_sent">Follow-up Sent</option>
+          <option value="response_received">Response Received</option>
+          <option value="converted">Converted</option>
+          <option value="rejected">Rejected</option>
+          <option value="cold">Cold</option>
+        </select>
+        <select id="crm-filter-contact" class="custom-select" style="min-width: 150px;">
+          <option value="">Contact Info: All</option>
+          <option value="any">Has Contact Info</option>
+          <option value="none">No Contact Info</option>
+          <option value="email">Has Email</option>
+          <option value="instagram">Has Instagram</option>
+          <option value="whatsapp">Has WhatsApp</option>
+          <option value="phone">Has Phone</option>
+          <option value="facebook">Has Facebook</option>
+        </select>
+        <select id="crm-sort" class="custom-select" style="min-width: 150px;">
+          <option value="alpha_asc">Sort: Name (A-Z)</option>
+          <option value="alpha_desc">Sort: Name (Z-A)</option>
+          <option value="events_desc">Sort: Most Events</option>
+          <option value="contact_recent">Sort: Recently Contacted</option>
+          <option value="contact_oldest">Sort: Needs Follow-up</option>
+        </select>
+        <select id="crm-filter-status" class="custom-select" style="min-width: 150px;">
+          <option value="">Any Status (Active)</option>
+          <option value="uncontacted">Uncontacted (Active)</option>
+          <option value="overdue">Overdue (>7 Days)</option>
+          <option value="archived">Archived</option>
+        </select>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 0.8rem; color: var(--text-primary);"><strong id="crm-list-count">0</strong> found</span>
+          <button id="btn-clear-filters" class="btn btn-secondary btn-sm">Reset</button>
+        </div>
       </div>
     </div>
   </div>
@@ -987,6 +1288,9 @@
           
           <!-- Detail Header -->
           <div class="detail-header">
+            <button class="btn btn-secondary btn-sm mobile-back-btn" onclick="document.getElementById('crm-detail-content').classList.remove('active'); document.getElementById('crm-empty-state').style.display = 'flex';">
+              <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Back to List
+            </button>
             <div class="detail-top-row">
               <div class="detail-title-group">
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -1019,8 +1323,13 @@
             </div>
 
             <!-- Direct Contact Links -->
-            <div class="detail-channels-bar" id="crm-detail-links">
-              <!-- Channel badges injected via JS -->
+            <div class="mobile-collapse-box contact-collapse" onclick="if(window.innerWidth <= 768) this.classList.toggle('open')">
+              <div class="mobile-collapse-header">
+                <span style="display:flex; align-items:center; gap:6px;"><i data-lucide="link" style="width:14px; height:14px;"></i> Contact Channels</span>
+              </div>
+              <div class="detail-channels-bar" id="crm-detail-links">
+                <!-- Channel badges injected via JS -->
+              </div>
             </div>
           </div>
 
@@ -1028,21 +1337,21 @@
           <div class="detail-action-bar">
             <div class="action-group-left">
               <button class="btn btn-primary" id="btn-crm-ai-assist">
-                <i data-lucide="wand-2"></i> AI Assist / Draft Outreach
+                <i data-lucide="wand-2"></i> <span>AI Assist / Draft Outreach</span>
               </button>
               <button class="btn btn-secondary" id="btn-crm-add-log">
-                <i data-lucide="plus"></i> Log Interaction
+                <i data-lucide="plus"></i> <span>Log Interaction</span>
               </button>
             </div>
             <div style="display:flex; gap:8px;">
               <button class="btn btn-secondary btn-sm" id="btn-crm-unarchive" title="Unarchive Organizer" style="display:none;">
-                <i data-lucide="archive-restore"></i> Unarchive
+                <i data-lucide="archive-restore"></i> <span>Unarchive</span>
               </button>
               <button class="btn btn-secondary btn-sm" id="btn-crm-archive" title="Archive Organizer">
-                <i data-lucide="archive"></i> Archive
+                <i data-lucide="archive"></i> <span>Archive</span>
               </button>
               <button class="btn btn-danger btn-sm" id="btn-crm-hard-delete" title="Permanently Delete">
-                <i data-lucide="trash-2"></i> Delete
+                <i data-lucide="trash-2"></i> <span>Delete</span>
               </button>
             </div>
           </div>
@@ -1051,7 +1360,7 @@
           <div class="detail-body-grid">
             
             <!-- Column 1: Interaction Timeline -->
-            <div class="detail-box">
+            <div class="detail-box mobile-collapse-box" onclick="if(window.innerWidth <= 768) this.classList.toggle('open')">
               <div class="detail-box-header">
                 <span class="detail-box-title"><i data-lucide="activity"></i> Interaction Timeline</span>
                 <span style="font-size:0.68rem; color:var(--text-muted);" id="crm-timeline-count">0 logs</span>
@@ -1067,7 +1376,7 @@
             <div style="display:flex; flex-direction:column; gap:14px; height:100%;">
               
               <!-- Quick Notes -->
-              <div class="detail-box" style="flex: 1.2;">
+              <div class="detail-box mobile-collapse-box" style="flex: 1.2;" onclick="if(window.innerWidth <= 768) this.classList.toggle('open')">
                 <div class="detail-box-header">
                   <span class="detail-box-title"><i data-lucide="file-text"></i> Quick Notes</span>
                   <span style="font-size:0.68rem; color:var(--text-muted);">Auto-saves on blur</span>
@@ -1078,7 +1387,7 @@
               </div>
 
               <!-- Associated Events -->
-              <div class="detail-box" style="flex: 1;">
+              <div class="detail-box mobile-collapse-box" style="flex: 1;" onclick="if(window.innerWidth <= 768) this.classList.toggle('open')">
                 <div class="detail-box-header">
                   <span class="detail-box-title"><i data-lucide="calendar-days"></i> Associated Events</span>
                   <span style="font-size:0.68rem; color:var(--text-muted);" id="crm-events-count">0</span>

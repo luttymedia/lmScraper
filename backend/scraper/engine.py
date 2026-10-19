@@ -115,6 +115,10 @@ class ScraperConfig:
     dance_style: str | None = None
     platform: str = 'goandance'
     schedule_id: str | None = None
+    target_type: str = 'events'
+    artist_category: str | None = None
+    max_artists: int | None = None
+    max_pages: int | None = None
 
 async def emit(queue: asyncio.Queue, event: dict, job_id: str | None = None) -> None:
     """Emit an event to the progress queue and optionally persist log messages."""

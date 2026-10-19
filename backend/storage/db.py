@@ -4,6 +4,7 @@ import json
 import uuid
 from pathlib import Path
 from datetime import datetime
+from typing import Any
 from contextlib import asynccontextmanager
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -211,6 +212,33 @@ async def init_db() -> None:
                 value TEXT
             )
         ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS artists (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id TEXT,
+                scraped_at TEXT NOT NULL,
+                uuid TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                category TEXT,
+                origin_location TEXT,
+                base_location TEXT,
+                dance_styles TEXT,
+                profile_url TEXT,
+                updated_at TEXT,
+                is_locked INTEGER DEFAULT 0
+            )
+        ''')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_artists_uuid ON artists(uuid)')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_artists_job_id ON artists(job_id)')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_artists_category ON artists(category)')
+        try:
+            await db.execute("ALTER TABLE artists ADD COLUMN is_locked INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE jobs ADD COLUMN target_type TEXT DEFAULT 'events'")
+        except Exception:
+            pass
         
         # Seed default templates
         async with db.execute("SELECT COUNT(*) as count FROM crm_templates") as cursor:
@@ -1095,4 +1123,268 @@ async def bulk_update_events(updates: list[dict]) -> int:
             updated += 1
         await db.commit()
     return updated
+
+
+async def insert_or_update_artist(artist_dict: dict) -> tuple[int | None, str]:
+    """Insert or update an artist record. Returns (artist_id, status) where status is 'new' or 'updated'."""
+    uuid_val = artist_dict.get('uuid')
+    if not uuid_val:
+        return None, "invalid"
+
+    now_str = datetime.utcnow().isoformat()
+    async with get_db() as db:
+        # Check if artist exists
+        async with db.execute("SELECT id, is_locked FROM artists WHERE uuid = ?", (uuid_val,)) as cursor:
+            existing = await cursor.fetchone()
+
+        if existing:
+            artist_id = existing[0]
+            if existing[1]:
+                # Preserve locked artist data
+                return artist_id, "locked_preserved"
+            await db.execute('''
+                UPDATE artists
+                SET name = ?,
+                    category = ?,
+                    origin_location = ?,
+                    base_location = ?,
+                    dance_styles = ?,
+                    profile_url = ?,
+                    job_id = COALESCE(?, job_id),
+                    updated_at = ?
+                WHERE id = ?
+            ''', (
+                artist_dict.get('name', ''),
+                artist_dict.get('category', ''),
+                artist_dict.get('origin_location', ''),
+                artist_dict.get('base_location', ''),
+                artist_dict.get('dance_styles', ''),
+                artist_dict.get('profile_url', ''),
+                artist_dict.get('job_id'),
+                now_str,
+                artist_id
+            ))
+            await db.commit()
+            return artist_id, "updated"
+        else:
+            cursor = await db.execute('''
+                INSERT INTO artists (job_id, scraped_at, uuid, name, category, origin_location, base_location, dance_styles, profile_url, updated_at, is_locked)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                artist_dict.get('job_id'),
+                artist_dict.get('scraped_at') or now_str,
+                uuid_val,
+                artist_dict.get('name', ''),
+                artist_dict.get('category', ''),
+                artist_dict.get('origin_location', ''),
+                artist_dict.get('base_location', ''),
+                artist_dict.get('dance_styles', ''),
+                artist_dict.get('profile_url', ''),
+                now_str,
+                int(artist_dict.get('is_locked') or 0)
+            ))
+            await db.commit()
+            return cursor.lastrowid, "new"
+
+
+def _build_artist_conditions(
+    job_id: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    dance_style: str | None = None,
+    location: str | None = None,
+    show_locked: str | None = None
+) -> tuple[list[str], list[Any]]:
+    conditions = []
+    params = []
+
+    if job_id:
+        conditions.append("job_id = ?")
+        params.append(job_id)
+
+    if category and category.lower() != 'all':
+        conditions.append("LOWER(category) = ?")
+        params.append(category.lower())
+
+    if dance_style:
+        conditions.append("LOWER(dance_styles) LIKE ?")
+        params.append(f"%{dance_style.strip().lower()}%")
+
+    if location:
+        loc_pattern = f"%{location.strip().lower()}%"
+        conditions.append("(LOWER(origin_location) LIKE ? OR LOWER(base_location) LIKE ?)")
+        params.extend([loc_pattern, loc_pattern])
+
+    if show_locked == 'only':
+        conditions.append("is_locked = 1")
+    elif show_locked == 'no':
+        conditions.append("is_locked = 0")
+
+    if search:
+        search_pattern = f"%{search.strip().lower()}%"
+        conditions.append("(LOWER(name) LIKE ? OR LOWER(dance_styles) LIKE ? OR LOWER(origin_location) LIKE ? OR LOWER(base_location) LIKE ?)")
+        params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+
+    return conditions, params
+
+
+async def get_artists(
+    job_id: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    dance_style: str | None = None,
+    location: str | None = None,
+    show_locked: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None,
+    limit: int = 50,
+    offset: int = 0
+) -> list[dict]:
+    """Fetch paginated list of artists matching optional filters and sort column."""
+    conditions, params = _build_artist_conditions(
+        job_id=job_id,
+        category=category,
+        search=search,
+        dance_style=dance_style,
+        location=location,
+        show_locked=show_locked
+    )
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    allowed_sort_cols = {
+        'id': 'id',
+        'name': 'LOWER(name)',
+        'category': 'category',
+        'origin_location': 'origin_location',
+        'base_location': 'base_location',
+        'dance_styles': 'dance_styles',
+        'scraped_at': 'scraped_at',
+        'is_locked': 'is_locked'
+    }
+    col = allowed_sort_cols.get((sort_by or '').lower(), 'id')
+    direction = 'ASC' if (sort_dir or '').upper() == 'ASC' else 'DESC'
+
+    query = f"SELECT * FROM artists {where_clause} ORDER BY {col} {direction} LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    async with get_db() as db:
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def count_artists(
+    job_id: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    dance_style: str | None = None,
+    location: str | None = None,
+    show_locked: str | None = None
+) -> int:
+    """Count total artists matching optional filters."""
+    conditions, params = _build_artist_conditions(
+        job_id=job_id,
+        category=category,
+        search=search,
+        dance_style=dance_style,
+        location=location,
+        show_locked=show_locked
+    )
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    query = f"SELECT COUNT(*) as count FROM artists {where_clause}"
+
+    async with get_db() as db:
+        async with db.execute(query, params) as cursor:
+            row = await cursor.fetchone()
+            return row['count'] if row else 0
+
+
+async def get_all_artists_for_export(
+    job_id: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    dance_style: str | None = None,
+    location: str | None = None,
+    show_locked: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None
+) -> list[dict]:
+    """Fetch all artists for CSV/Excel export."""
+    conditions, params = _build_artist_conditions(
+        job_id=job_id,
+        category=category,
+        search=search,
+        dance_style=dance_style,
+        location=location,
+        show_locked=show_locked
+    )
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    allowed_sort_cols = {
+        'id': 'id',
+        'name': 'LOWER(name)',
+        'category': 'category',
+        'origin_location': 'origin_location',
+        'base_location': 'base_location',
+        'dance_styles': 'dance_styles',
+        'scraped_at': 'scraped_at',
+        'is_locked': 'is_locked'
+    }
+    col = allowed_sort_cols.get((sort_by or '').lower(), 'id')
+    direction = 'ASC' if (sort_dir or '').upper() == 'ASC' else 'DESC'
+
+    query = f"SELECT id, name, category, origin_location, base_location, dance_styles, profile_url, scraped_at, is_locked FROM artists {where_clause} ORDER BY {col} {direction}"
+
+    async with get_db() as db:
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def set_artist_lock(artist_id: int, locked: bool) -> None:
+    """Set or clear the lock flag on a single artist."""
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE artists SET is_locked = ? WHERE id = ?",
+            (1 if locked else 0, artist_id)
+        )
+        await db.commit()
+
+
+async def bulk_set_artist_lock(artist_ids: list[int], locked: bool) -> int:
+    """Set or clear the lock flag on multiple artists. Returns count updated."""
+    if not artist_ids:
+        return 0
+    placeholders = ', '.join(['?'] * len(artist_ids))
+    async with get_db() as db:
+        cursor = await db.execute(
+            f"UPDATE artists SET is_locked = ? WHERE id IN ({placeholders})",
+            [1 if locked else 0] + list(artist_ids)
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
+async def delete_artists_by_ids(artist_ids: list[int]) -> int:
+    """Delete specific artists by their IDs, skipping locked rows."""
+    if not artist_ids:
+        return 0
+    placeholders = ', '.join(['?'] * len(artist_ids))
+    query = f"DELETE FROM artists WHERE id IN ({placeholders}) AND is_locked = 0"
+    async with get_db() as db:
+        cursor = await db.execute(query, artist_ids)
+        await db.commit()
+        return cursor.rowcount
+
+
+async def delete_artist(artist_id: int) -> bool:
+    """Delete an artist record by ID if not locked."""
+    async with get_db() as db:
+        cursor = await db.execute("DELETE FROM artists WHERE id = ? AND is_locked = 0", (artist_id,))
+        await db.commit()
+        return cursor.rowcount > 0
+
 

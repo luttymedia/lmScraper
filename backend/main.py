@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio, uuid, json
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse, quote as urlquote
 import urllib.request as urllib_request
@@ -20,10 +21,13 @@ from backend.storage.db import (
     set_event_lock, bulk_set_event_lock, delete_events_by_ids,
     list_schedules, get_schedule, insert_session, list_sessions,
     delete_session, get_session_for_domain,
-    list_groups, get_group, get_group_schedules
+    list_groups, get_group, get_group_schedules,
+    get_artists, count_artists, delete_artist,
+    set_artist_lock, bulk_set_artist_lock, delete_artists_by_ids
 )
 from backend.storage.exporter import (
     export_to_csv, export_to_xlsx,
+    export_artists_to_csv, export_artists_to_xlsx,
     parse_import_file, compute_import_diff, apply_import as apply_import_diff,
 )
 from backend.storage.monitor import (
@@ -93,6 +97,29 @@ app.include_router(crm_router)
 @app.post("/api/jobs")
 async def create_job_route(body: dict = Body(...)):
     url = body.get('url')
+    target_type = body.get('target_type', 'events')
+    artist_category = body.get('artist_category', 'all')
+    max_artists = body.get('max_artists')
+    if max_artists is not None:
+        try:
+            max_artists = int(max_artists)
+        except (ValueError, TypeError):
+            max_artists = None
+
+    max_pages = body.get('max_pages')
+    if max_pages is not None:
+        try:
+            max_pages = int(max_pages)
+        except (ValueError, TypeError):
+            max_pages = None
+
+    if target_type == 'artists':
+        if not url:
+            if artist_category in ('dancers', 'singers', 'djs'):
+                url = f"https://www.goandance.com/en/artists/{artist_category}"
+            else:
+                url = "https://www.goandance.com/en/artists"
+
     if not url:
         raise HTTPException(400, "URL is required")
         
@@ -107,20 +134,23 @@ async def create_job_route(body: dict = Body(...)):
             session_cookies = session['cookies_json']
             
     nickname = (body.get('nickname') or '').strip()
+    now_str = datetime.utcnow().strftime('%b %d, %H:%M')
     if not nickname:
-        style = body.get('dance_style')
-        city = (body.get('filters') or {}).get('city')
-        platform = body.get('platform', 'goandance')
-        platform_name = 'Go&Dance' if platform == 'goandance' else platform.capitalize()
-        now_str = datetime.utcnow().strftime('%b %d, %H:%M')
-        if style and city:
-            nickname = f"{style} in {city} · {now_str}"
-        elif style:
-            nickname = f"{style} · {now_str}"
-        elif city:
-            nickname = f"{platform_name} {city} · {now_str}"
+        if target_type == 'artists':
+            nickname = f"Artists ({artist_category.capitalize()}) · {now_str}"
         else:
-            nickname = f"{platform_name} · {now_str}"
+            style = body.get('dance_style')
+            city = (body.get('filters') or {}).get('city')
+            platform = body.get('platform', 'goandance')
+            platform_name = 'Go&Dance' if platform == 'goandance' else platform.capitalize()
+            if style and city:
+                nickname = f"{style} in {city} · {now_str}"
+            elif style:
+                nickname = f"{style} · {now_str}"
+            elif city:
+                nickname = f"{platform_name} {city} · {now_str}"
+            else:
+                nickname = f"{platform_name} · {now_str}"
 
     job_dict = {
         'url': url,
@@ -128,7 +158,8 @@ async def create_job_route(body: dict = Body(...)):
         'concurrency': concurrency,
         'dance_style': body.get('dance_style'),
         'platform': body.get('platform', 'goandance'),
-        'nickname': nickname
+        'nickname': nickname,
+        'target_type': target_type
     }
     job_id = await insert_job(job_dict)
     
@@ -137,12 +168,16 @@ async def create_job_route(body: dict = Body(...)):
         url=url,
         filters=filters,
         concurrency=concurrency,
-        min_delay=body.get('min_delay', 1.5),
-        max_delay=body.get('max_delay', 4.0),
+        min_delay=body.get('min_delay', 1.0 if target_type == 'artists' else 1.5),
+        max_delay=body.get('max_delay', 2.5 if target_type == 'artists' else 4.0),
         proxy=body.get('proxy'),
         session_cookies=session_cookies,
         dance_style=body.get('dance_style'),
-        platform=body.get('platform', 'goandance')
+        platform=body.get('platform', 'goandance'),
+        target_type=target_type,
+        artist_category=artist_category,
+        max_artists=max_artists,
+        max_pages=max_pages
     )
     
     await start_job(job_id, config)
@@ -311,6 +346,124 @@ async def export_xlsx_route(
 ):
     filters = parse_event_filters(job_id, job_ids, updated_by_job_id, date_from, date_to, city, keyword, contact_hidden, has_contact, has_email, has_phone, sort_by, sort_dir, show_hidden, show_locked)
     return await export_to_xlsx(filters)
+
+# API Routes - Artists
+@app.get("/api/artists")
+async def get_artists_route(
+    page: int = 1,
+    per_page: int = 50,
+    job_id: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    dance_style: str | None = None,
+    location: str | None = None,
+    show_locked: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None
+):
+    offset = (page - 1) * per_page
+    artists = await get_artists(
+        job_id=job_id,
+        category=category,
+        search=search,
+        dance_style=dance_style,
+        location=location,
+        show_locked=show_locked,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        limit=per_page,
+        offset=offset
+    )
+    total = await count_artists(
+        job_id=job_id,
+        category=category,
+        search=search,
+        dance_style=dance_style,
+        location=location,
+        show_locked=show_locked
+    )
+    import math
+    return {
+        "items": artists,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": math.ceil(total / per_page) if total > 0 else 1
+    }
+
+@app.patch("/api/artists/{artist_id}/lock")
+async def lock_artist_route(artist_id: int, body: dict = Body(...)):
+    locked = bool(body.get('locked', True))
+    await set_artist_lock(artist_id, locked)
+    return {"id": artist_id, "locked": locked}
+
+@app.post("/api/artists/bulk-lock")
+async def bulk_lock_artists_route(body: dict = Body(...)):
+    artist_ids = body.get('artist_ids', [])
+    locked = bool(body.get('locked', True))
+    if not isinstance(artist_ids, list):
+        raise HTTPException(400, "artist_ids must be a list")
+    count = await bulk_set_artist_lock(artist_ids, locked)
+    return {"updated": count, "locked": locked}
+
+@app.post("/api/artists/bulk-delete-by-ids")
+async def bulk_delete_artists_route(body: dict = Body(...)):
+    artist_ids = body.get('artist_ids', [])
+    if not isinstance(artist_ids, list):
+        raise HTTPException(400, "artist_ids must be a list")
+    deleted_count = await delete_artists_by_ids(artist_ids)
+    return {"deleted": deleted_count}
+
+@app.delete("/api/artists/{artist_id}")
+async def delete_artist_route(artist_id: int):
+    success = await delete_artist(artist_id)
+    if not success:
+        raise HTTPException(404, "Artist not found or artist is locked")
+    return {"deleted": True, "id": artist_id}
+
+@app.get("/api/artists/export/csv")
+async def export_artists_csv_route(
+    job_id: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    dance_style: str | None = None,
+    location: str | None = None,
+    show_locked: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None
+):
+    return await export_artists_to_csv(
+        job_id=job_id,
+        category=category,
+        search=search,
+        dance_style=dance_style,
+        location=location,
+        show_locked=show_locked,
+        sort_by=sort_by,
+        sort_dir=sort_dir
+    )
+
+@app.get("/api/artists/export/xlsx")
+async def export_artists_xlsx_route(
+    job_id: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    dance_style: str | None = None,
+    location: str | None = None,
+    show_locked: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None
+):
+    return await export_artists_to_xlsx(
+        job_id=job_id,
+        category=category,
+        search=search,
+        dance_style=dance_style,
+        location=location,
+        show_locked=show_locked,
+        sort_by=sort_by,
+        sort_dir=sort_dir
+    )
 
 # API Routes - Import
 @app.post("/api/events/import/preview")

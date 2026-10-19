@@ -454,3 +454,79 @@ async def apply_import(diff: dict) -> dict:
         'inserted': inserted_count,
         'removed': removed_count,
     }
+
+
+async def export_artists_to_csv(
+    job_id: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    dance_style: str | None = None,
+    location: str | None = None,
+    show_locked: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None
+) -> StreamingResponse:
+    """Export artists to CSV format with UTF-8 BOM."""
+    from backend.storage.db import get_all_artists_for_export
+    artists = await get_all_artists_for_export(
+        job_id=job_id, category=category, search=search,
+        dance_style=dance_style, location=location, show_locked=show_locked,
+        sort_by=sort_by, sort_dir=sort_dir
+    )
+    df = pd.DataFrame(artists)
+    if df.empty:
+        df = pd.DataFrame(columns=['id', 'name', 'category', 'origin_location', 'base_location', 'dance_styles', 'profile_url', 'scraped_at', 'is_locked'])
+
+    stream = io.StringIO()
+    stream.write('\ufeff')
+    df.to_csv(stream, index=False)
+    stream.seek(0)
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    filename = f"artists_export_{timestamp}.csv"
+    return StreamingResponse(
+        iter([stream.getvalue().encode('utf-8')]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+async def export_artists_to_xlsx(
+    job_id: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    dance_style: str | None = None,
+    location: str | None = None,
+    show_locked: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None
+) -> StreamingResponse:
+    """Export artists to XLSX format with styled headers."""
+    from backend.storage.db import get_all_artists_for_export
+    artists = await get_all_artists_for_export(
+        job_id=job_id, category=category, search=search,
+        dance_style=dance_style, location=location, show_locked=show_locked,
+        sort_by=sort_by, sort_dir=sort_dir
+    )
+    df = pd.DataFrame(artists)
+    if df.empty:
+        df = pd.DataFrame(columns=['id', 'name', 'category', 'origin_location', 'base_location', 'dance_styles', 'profile_url', 'scraped_at', 'is_locked'])
+
+    stream = io.BytesIO()
+    with pd.ExcelWriter(stream, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Artists')
+        worksheet = writer.sheets['Artists']
+        header_fill = PatternFill(start_color='1a1c23', end_color='1a1c23', fill_type='solid')
+        header_font = Font(color='f5a623', bold=True)
+        for cell in worksheet[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+
+    stream.seek(0)
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    filename = f"artists_export_{timestamp}.xlsx"
+    return StreamingResponse(
+        iter([stream.getvalue()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+

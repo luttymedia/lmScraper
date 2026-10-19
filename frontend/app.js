@@ -187,7 +187,14 @@ function setupNavigation() {
       resetTabScroll();
 
       if (targetId === 'section-job-history') loadJobHistory();
-      if (targetId === 'section-results') { loadJobHistory(); loadResults(); }
+      if (targetId === 'section-results') {
+        loadJobHistory();
+        if (typeof currentResultsSubtab !== 'undefined' && currentResultsSubtab === 'artists') {
+          loadArtists();
+        } else {
+          loadResults();
+        }
+      }
       if (targetId === 'section-scheduler') { loadSchedules(); loadGroups(); }
       if (targetId === 'section-sessions') loadSessions();
 
@@ -556,14 +563,21 @@ setupUrlSync(schedUrlInput, schedStyleInput, schedDateFromInput, schedDateToInpu
 let isNicknameManuallyEdited = false;
 
 function generateDefaultJobNickname() {
+  const targetType = document.querySelector('input[name="job_target_type"]:checked')?.value || 'events';
+  const now = new Date();
+  const dateFormatted = now.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+
+  if (targetType === 'artists') {
+    const artistCat = document.getElementById('job-artist-category')?.value || 'all';
+    const catName = artistCat.charAt(0).toUpperCase() + artistCat.slice(1);
+    return `Artists (${catName}) · ${dateFormatted}`;
+  }
+
   const platformRadio = document.querySelector('input[name="job_platform"]:checked');
   const platform = platformRadio ? (platformRadio.value === 'goandance' ? 'Go&Dance' : (platformRadio.value === 'salsero' ? 'Salsero' : platformRadio.value)) : 'Go&Dance';
   const style = document.getElementById('job-dance-style')?.value?.trim();
   const city = document.getElementById('job-location')?.value?.trim();
   const keyword = document.getElementById('job-keyword')?.value?.trim();
-  
-  const now = new Date();
-  const dateFormatted = now.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 
   let mainPart = '';
   if (style && city) {
@@ -600,7 +614,8 @@ function setupNicknameSync() {
   const inputsToWatch = [
     document.getElementById('job-dance-style'),
     document.getElementById('job-location'),
-    document.getElementById('job-keyword')
+    document.getElementById('job-keyword'),
+    document.getElementById('job-artist-category')
   ];
 
   inputsToWatch.forEach(input => {
@@ -614,8 +629,61 @@ function setupNicknameSync() {
     radio.addEventListener('change', syncDefaultNickname);
   });
 
+  document.querySelectorAll('input[name="job_target_type"]').forEach(radio => {
+    radio.addEventListener('change', syncDefaultNickname);
+  });
+
   if (!nickInput.value) {
     nickInput.value = generateDefaultJobNickname();
+  }
+}
+
+function setupTargetTypeToggle() {
+  const targetRadios = document.querySelectorAll('input[name="job_target_type"]');
+  const filtersContainer = document.getElementById('job-filters-container');
+  const artistsContainer = document.getElementById('job-artists-container');
+  const platformGroup = document.getElementById('job-platform-group');
+  const langGroup = document.getElementById('job-gad-lang-group');
+  const urlInput = document.getElementById('job-url');
+  const artistCategorySelect = document.getElementById('job-artist-category');
+
+  function updateTargetView() {
+    const isArtists = document.querySelector('input[name="job_target_type"]:checked')?.value === 'artists';
+    if (isArtists) {
+      if (filtersContainer) filtersContainer.classList.add('hidden');
+      if (artistsContainer) artistsContainer.classList.remove('hidden');
+      if (platformGroup) platformGroup.classList.add('hidden');
+      if (langGroup) langGroup.classList.add('hidden');
+      const cat = artistCategorySelect?.value || 'all';
+      if (urlInput) {
+        urlInput.value = cat === 'all' 
+          ? 'https://www.goandance.com/en/artists' 
+          : `https://www.goandance.com/en/artists/${cat}`;
+      }
+    } else {
+      if (filtersContainer) filtersContainer.classList.remove('hidden');
+      if (artistsContainer) artistsContainer.classList.add('hidden');
+      if (platformGroup) platformGroup.classList.remove('hidden');
+      if (langGroup) langGroup.classList.remove('hidden');
+      if (urlInput) {
+        urlInput.value = 'https://www.goandance.com/en/events';
+      }
+    }
+    syncDefaultNickname();
+  }
+
+  targetRadios.forEach(r => r.addEventListener('change', updateTargetView));
+  if (artistCategorySelect) {
+    artistCategorySelect.addEventListener('change', () => {
+      const isArtists = document.querySelector('input[name="job_target_type"]:checked')?.value === 'artists';
+      if (isArtists && urlInput) {
+        const cat = artistCategorySelect.value;
+        urlInput.value = cat === 'all' 
+          ? 'https://www.goandance.com/en/artists' 
+          : `https://www.goandance.com/en/artists/${cat}`;
+      }
+      syncDefaultNickname();
+    });
   }
 }
 
@@ -623,13 +691,25 @@ UI.btnStart.addEventListener('click', async () => {
   const url = document.getElementById('job-url').value;
   if(!url) return showToast('Please enter a target URL', 'error');
 
+  const targetType = document.querySelector('input[name="job_target_type"]:checked')?.value || 'events';
+  const isArtists = (targetType === 'artists');
+  const artistCategory = document.getElementById('job-artist-category')?.value || 'all';
+  const artistLimitVal = document.getElementById('job-artist-limit')?.value?.trim();
+  const artistPagesVal = document.getElementById('job-artist-pages-limit')?.value?.trim();
+  const artistLimit = artistLimitVal ? parseInt(artistLimitVal, 10) : null;
+  const artistPagesLimit = artistPagesVal ? parseInt(artistPagesVal, 10) : null;
+
   const nickname = document.getElementById('job-nickname')?.value?.trim() || generateDefaultJobNickname();
   const payload = {
     url,
     nickname,
-    platform: document.querySelector('input[name="job_platform"]:checked')?.value || 'goandance',
-    dance_style: document.getElementById('job-dance-style').value || null,
-    filters: {
+    target_type: targetType,
+    artist_category: isArtists ? artistCategory : null,
+    max_artists: isArtists ? artistLimit : null,
+    max_pages: isArtists ? artistPagesLimit : null,
+    platform: isArtists ? 'goandance' : (document.querySelector('input[name="job_platform"]:checked')?.value || 'goandance'),
+    dance_style: isArtists ? null : (document.getElementById('job-dance-style').value || null),
+    filters: isArtists ? {} : {
       date_from: document.getElementById('job-date-from').value || null,
       date_to: document.getElementById('job-date-to').value || null,
       city: document.getElementById('job-location').value || null,
@@ -709,6 +789,7 @@ function connectJobWs(jobId) {
         resetJobControls();
         loadJobHistory();
         loadResults();
+        loadArtists();
       }
     } catch(e) {}
   };
@@ -1507,6 +1588,18 @@ document.getElementById('results-tbody').addEventListener('click', async (e) => 
 
 let allJobHistory = [];
 let selectedJobIds = new Set();
+let currentResultsSubtab = 'events';
+let artistsJobId = null;
+let artistsCurrentPage = 1;
+let artistsPerPage = 50;
+let artistsSearch = '';
+let artistsCategory = 'all';
+let artistsDanceStyle = '';
+let artistsLocation = '';
+let artistsLocked = '';
+let artistsSortCol = 'id';
+let artistsSortDir = 'desc';
+let artistsData = [];
 
 function updateJobMultiselectLabel() {
   const labelEl = document.getElementById('job-multiselect-label');
@@ -1698,8 +1791,35 @@ async function loadJobHistory(selectedJobId) {
     updateJobMultiselectLabel();
     renderJobMultiselectList();
     renderJobHistory();
+    populateArtistJobFilterDropdown();
   } catch(e) {
     console.error('Failed to load job history', e);
+  }
+}
+
+function populateArtistJobFilterDropdown() {
+  const select = document.getElementById('filter-artists-job');
+  if (!select) return;
+  const currentVal = select.value;
+  select.innerHTML = '<option value="">All Jobs</option>';
+
+  const artistJobs = (allJobHistory || []).filter(j => 
+    j.target_type === 'artists' || (j.url && j.url.includes('/artists'))
+  );
+
+  artistJobs.forEach(j => {
+    const opt = document.createElement('option');
+    opt.value = j.id;
+    const dateStr = formatDate(j.created_at);
+    const label = j.nickname || `Artists · ${dateStr}`;
+    opt.textContent = `${label} (${j.events_found || 0} artists)`;
+    select.appendChild(opt);
+  });
+
+  if (artistsJobId && Array.from(select.options).some(o => o.value === artistsJobId)) {
+    select.value = artistsJobId;
+  } else if (currentVal && Array.from(select.options).some(o => o.value === currentVal)) {
+    select.value = currentVal;
   }
 }
 
@@ -1806,6 +1926,9 @@ function renderJobHistory() {
       }
     }
 
+    const isArtistJob = job.target_type === 'artists' || (job.url && job.url.includes('/artists'));
+    const itemLabel = isArtistJob ? 'Artists' : 'Events';
+
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
@@ -1835,16 +1958,16 @@ function renderJobHistory() {
 
       ${filterHtml}
       <div class="jh-stats" style="display:flex; align-items:center; gap:14px; font-size:0.8rem; color:var(--text-secondary); margin-bottom:14px;">
-        <div>Events found: <strong style="color:var(--text-primary)">${job.events_found || 0}</strong></div>
+        <div>${itemLabel} found: <strong style="color:var(--text-primary)">${job.events_found || 0}</strong></div>
         <div class="jh-stats-sep" style="color:var(--border); font-size:0.7rem;">•</div>
         <div>New: <strong style="color:var(--success)">${job.events_new || 0}</strong></div>
         <div class="jh-stats-sep" style="color:var(--border); font-size:0.7rem;">•</div>
-        <div>Updated: ${job.events_updated > 0 ? `<a href="#" onclick="viewJobUpdates('${job.id}'); return false;" style="color:var(--accent); font-weight:bold; text-decoration:none;" title="View updated events for this job">${job.events_updated}</a>` : `<strong style="color:var(--accent)">0</strong>`}</div>
+        <div>Updated: ${job.events_updated > 0 ? (isArtistJob ? `<strong style="color:var(--accent)">${job.events_updated}</strong>` : `<a href="#" onclick="viewJobUpdates('${job.id}'); return false;" style="color:var(--accent); font-weight:bold; text-decoration:none;" title="View updated events for this job">${job.events_updated}</a>`) : `<strong style="color:var(--accent)">0</strong>`}</div>
         <div class="jh-stats-sep" style="color:var(--border); font-size:0.7rem;">•</div>
         <div>Duration: <strong style="color:var(--text-primary)">${durationStr}</strong></div>
       </div>
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:nowrap;">
-        <button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="viewJobResults('${job.id}')">${ICONS.chart} <span class="jh-btn-label">View Results</span></button>
+        <button class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="viewJobResults('${job.id}', ${isArtistJob})">${ICONS.chart} <span class="jh-btn-label">View Results</span></button>
         ${job.status === 'running' || job.status === 'pending'
           ? `<button class="btn btn-danger btn-sm" style="white-space:nowrap; background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #ef4444;" onclick="cancelJobHistory('${job.id}')">${ICONS.pause} <span class="jh-btn-label">Stop</span></button>`
           : `<button class="btn btn-primary btn-sm" style="white-space:nowrap;" onclick="rerunJob('${job.id}')">${ICONS.repeat} <span class="jh-btn-label">Rerun</span></button>`
@@ -1882,8 +2005,21 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-window.viewJobResults = async (jobId) => {
+window.viewJobResults = async (jobId, isArtistJob) => {
   view_updated_for_job = null;
+
+  if (!allJobHistory || allJobHistory.length === 0) {
+    try {
+      const res = await api('/api/jobs?per_page=1000');
+      allJobHistory = Array.isArray(res) ? res : (res.jobs || []);
+    } catch (e) {}
+  }
+
+  if (typeof isArtistJob !== 'boolean') {
+    const cachedJob = (allJobHistory || []).find(j => j.id === jobId);
+    isArtistJob = !!(cachedJob && (cachedJob.target_type === 'artists' || (cachedJob.url && cachedJob.url.includes('/artists'))));
+  }
+
   // Navigate to Results section
   const navItems = document.querySelectorAll('.nav-item');
   navItems.forEach(n => n.classList.remove('active'));
@@ -1901,9 +2037,49 @@ window.viewJobResults = async (jobId) => {
 
   resetTabScroll();
 
-  // Clear all other filter inputs so we only filter by this job
-  document.querySelectorAll('.filter-bar input, .filter-bar select').forEach(el => {
-    el.value = '';
+  const subtabEvents = document.getElementById('subtab-events');
+  const subtabArtists = document.getElementById('subtab-artists');
+  const eventsContainer = document.getElementById('events-view-container');
+  const artistsContainer = document.getElementById('artists-view-container');
+
+  if (isArtistJob) {
+    currentResultsSubtab = 'artists';
+    if (subtabArtists) {
+      subtabArtists.className = 'btn btn-sm btn-primary';
+      subtabArtists.style.border = 'none';
+    }
+    if (subtabEvents) {
+      subtabEvents.className = 'btn btn-sm btn-ghost';
+      subtabEvents.style.border = '1px solid var(--border)';
+    }
+    if (eventsContainer) eventsContainer.classList.add('hidden');
+    if (artistsContainer) artistsContainer.classList.remove('hidden');
+
+    artistsJobId = jobId;
+    artistsCurrentPage = 1;
+    populateArtistJobFilterDropdown();
+    const jobSelect = document.getElementById('filter-artists-job');
+    if (jobSelect) jobSelect.value = jobId;
+    await loadArtists(jobId);
+    return;
+  }
+
+  currentResultsSubtab = 'events';
+  if (subtabEvents) {
+    subtabEvents.className = 'btn btn-sm btn-primary';
+    subtabEvents.style.border = 'none';
+  }
+  if (subtabArtists) {
+    subtabArtists.className = 'btn btn-sm btn-ghost';
+    subtabArtists.style.border = '1px solid var(--border)';
+  }
+  if (eventsContainer) eventsContainer.classList.remove('hidden');
+  if (artistsContainer) artistsContainer.classList.add('hidden');
+
+  // Clear specific event filter inputs so we only filter by this job
+  ['filter-date-from', 'filter-date-to', 'filter-city', 'filter-keyword', 'filter-contact', 'filter-hidden-contact', 'filter-show-hidden', 'filter-show-locked'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
   });
 
   // Select this jobId in multiselect
@@ -3613,11 +3789,558 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
     document.head.appendChild(style);
   }
+});
 
+// ── Artists View & Sub-tabs ──────────────────────────────────────────────────
+
+function buildArtistsExportQuery() {
+  const q = new URLSearchParams();
+  if (artistsCategory && artistsCategory !== 'all') q.set('category', artistsCategory);
+  if (artistsSearch) q.set('search', artistsSearch);
+  if (artistsDanceStyle) q.set('dance_style', artistsDanceStyle);
+  if (artistsLocation) q.set('location', artistsLocation);
+  if (artistsLocked) q.set('show_locked', artistsLocked);
+  if (artistsJobId) q.set('job_id', artistsJobId);
+  if (artistsSortCol) q.set('sort_by', artistsSortCol);
+  if (artistsSortDir) q.set('sort_dir', artistsSortDir);
+  return q.toString();
+}
+
+function updateArtistsSortHeaders() {
+  document.querySelectorAll('#artists-table .artist-sortable-th').forEach(th => {
+    const colKey = th.dataset.col;
+    const isActive = (artistsSortCol === colKey);
+    th.classList.toggle('sort-active', isActive);
+    const indicator = th.querySelector('.sort-indicator');
+    if (indicator) {
+      indicator.innerHTML = isActive
+        ? (artistsSortDir === 'asc' ? ICONS.arrowUp : ICONS.arrowDown)
+        : ICONS.sortNeutral;
+    }
+  });
+}
+
+function getCheckedArtistIds() {
+  return Array.from(document.querySelectorAll('.artist-row-checkbox:checked')).map(cb => parseInt(cb.value, 10));
+}
+
+function updateArtistsBulkActions() {
+  const checked = document.querySelectorAll('.artist-row-checkbox:checked');
+  const bar = document.getElementById('artists-bulk-actions');
+  const countEl = document.getElementById('artists-selected-count');
+  const selectAll = document.getElementById('artists-select-all');
+
+  if (selectAll) {
+    const allCbs = document.querySelectorAll('.artist-row-checkbox');
+    selectAll.checked = allCbs.length > 0 && checked.length === allCbs.length;
+    selectAll.indeterminate = checked.length > 0 && checked.length < allCbs.length;
+  }
+
+  if (bar) {
+    if (checked.length > 0) {
+      bar.classList.remove('hidden');
+      bar.style.display = 'flex';
+    } else {
+      bar.classList.add('hidden');
+      bar.style.display = 'none';
+    }
+  }
+  if (countEl) {
+    countEl.textContent = `${checked.length} selected`;
+  }
+}
+
+async function loadArtists(jobId = undefined) {
+  if (jobId !== undefined) {
+    artistsJobId = jobId;
+  }
+  const query = new URLSearchParams({
+    page: artistsCurrentPage,
+    per_page: artistsPerPage,
+    sort_by: artistsSortCol,
+    sort_dir: artistsSortDir
+  });
+  if (artistsCategory && artistsCategory !== 'all') {
+    query.set('category', artistsCategory);
+  }
+  if (artistsSearch) {
+    query.set('search', artistsSearch);
+  }
+  if (artistsDanceStyle) {
+    query.set('dance_style', artistsDanceStyle);
+  }
+  if (artistsLocation) {
+    query.set('location', artistsLocation);
+  }
+  if (artistsLocked) {
+    query.set('show_locked', artistsLocked);
+  }
+  if (artistsJobId) {
+    query.set('job_id', artistsJobId);
+  }
+
+  try {
+    const res = await api(`/api/artists?${query.toString()}`);
+    const items = res.items || [];
+    const total = res.total || 0;
+    artistsData = items;
+    renderArtistsTable(items);
+    updateArtistsSortHeaders();
+    updateArtistsBulkActions();
+    renderArtistsPagination(total, res.page || artistsCurrentPage, res.pages || 1);
+
+    const jobSelect = document.getElementById('filter-artists-job');
+    if (jobSelect) {
+      jobSelect.value = artistsJobId || '';
+    }
+
+    const countEl = document.getElementById('artists-count');
+    if (countEl) {
+      let jobFilterSuffix = '';
+      if (artistsJobId) {
+        const matchingJob = (allJobHistory || []).find(j => j.id === artistsJobId);
+        const jobName = matchingJob?.nickname || ('Job ' + artistsJobId.slice(0, 8));
+        jobFilterSuffix = ` (${jobName})`;
+      }
+      if (total === 0) {
+        countEl.textContent = `Showing 0 artists${jobFilterSuffix}`;
+      } else {
+        const start = (artistsCurrentPage - 1) * artistsPerPage + 1;
+        const end = Math.min(artistsCurrentPage * artistsPerPage, total);
+        countEl.textContent = `Showing ${start}–${end} of ${total} artists${jobFilterSuffix}`;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load artists', err);
+  }
+}
+
+function renderArtistsTable(items) {
+  const tbody = document.getElementById('artists-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!items || items.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding: 32px; color: var(--text-muted);">No artists found matching your criteria.</td></tr>`;
+    return;
+  }
+
+  items.forEach(artist => {
+    const tr = document.createElement('tr');
+    const isLocked = artist.is_locked === 1;
+
+    const lockHtml = isLocked
+      ? `<span class="icon-link artist-lock-toggle" data-id="${artist.id}" data-locked="1" title="Locked — click to unlock" style="cursor:pointer; color:var(--primary);">${ICONS.lock}</span>`
+      : `<span class="icon-link artist-lock-toggle" data-id="${artist.id}" data-locked="0" title="Unlocked — click to lock" style="cursor:pointer; opacity:0.25;">${ICONS.lock}</span>`;
+
+    const catBadge = artist.category
+      ? `<span class="badge" style="text-transform: capitalize; background: rgba(245, 166, 35, 0.15); color: #f5a623; border: 1px solid rgba(245, 166, 35, 0.3); border-radius: 4px; padding: 2px 8px; font-size: 0.75rem;">${escapeHtml(artist.category)}</span>`
+      : '-';
+
+    const origin = escapeHtml(artist.origin_location || '-');
+    const base = escapeHtml(artist.base_location || '-');
+
+    let stylesHtml = '-';
+    if (artist.dance_styles) {
+      const tags = artist.dance_styles.split(',').map(s => s.trim()).filter(Boolean);
+      stylesHtml = tags.map(t => `<span class="tag-badge" style="display:inline-block; margin: 2px; padding: 2px 6px; font-size: 0.72rem; border-radius: 4px; background: var(--surface-elevated); border: 1px solid var(--border);">${escapeHtml(t)}</span>`).join('');
+    }
+
+    const profileLink = artist.profile_url
+      ? `<a href="${escapeHtml(artist.profile_url)}" target="_blank" rel="noopener noreferrer" class="icon-btn" title="View Profile" style="display:inline-flex; align-items:center; justify-content:center; color: var(--accent);"><i data-lucide="external-link" class="icon-sm"></i></a>`
+      : '-';
+
+    let scrapedDate = '-';
+    if (artist.scraped_at) {
+      try {
+        const d = new Date(artist.scraped_at);
+        scrapedDate = d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      } catch (e) {
+        scrapedDate = artist.scraped_at;
+      }
+    }
+
+    tr.innerHTML = `
+      <td style="text-align: center;"><input type="checkbox" class="artist-row-checkbox" value="${artist.id}"></td>
+      <td style="text-align: center;">${lockHtml}</td>
+      <td><strong>${escapeHtml(artist.name || 'Unknown')}</strong></td>
+      <td>${catBadge}</td>
+      <td>${origin}</td>
+      <td>${base}</td>
+      <td>${stylesHtml}</td>
+      <td style="text-align: center;">${profileLink}</td>
+      <td style="font-size: 0.8rem; color: var(--text-muted);">${scrapedDate}</td>
+      <td style="text-align: center;">
+        <button type="button" class="icon-btn text-danger btn-delete-artist" data-id="${artist.id}" ${isLocked ? 'disabled style="opacity:0.3; cursor:not-allowed;" title="Cannot delete locked artist"' : 'title="Delete Artist"'}>
+          <i data-lucide="trash-2" class="icon-sm"></i>
+        </button>
+      </td>
+    `;
+
+    const chk = tr.querySelector('.artist-row-checkbox');
+    if (chk) {
+      chk.addEventListener('change', updateArtistsBulkActions);
+    }
+
+    const delBtn = tr.querySelector('.btn-delete-artist:not([disabled])');
+    if (delBtn) {
+      delBtn.addEventListener('click', async () => {
+        if (!confirm(`Delete artist "${artist.name}"?`)) return;
+        try {
+          await api(`/api/artists/${artist.id}`, { method: 'DELETE' });
+          showToast('Artist deleted', 'success');
+          loadArtists();
+        } catch (e) {
+          showToast('Failed to delete artist', 'error');
+        }
+      });
+    }
+
+    tbody.appendChild(tr);
+  });
+
+  if (window.lucide) {
+    window.lucide.createIcons({ root: tbody });
+  }
+}
+
+function renderArtistsPagination(total, current, totalPages) {
+  const container = document.getElementById('pagination-artists');
+  if (!container) return;
+  container.innerHTML = '';
+  if (totalPages <= 1) return;
+
+  const prevBtn = document.createElement('button');
+  prevBtn.className = 'btn btn-secondary btn-sm';
+  prevBtn.innerHTML = '<i data-lucide="chevron-left" class="icon-sm"></i> Previous';
+  prevBtn.disabled = current <= 1;
+  prevBtn.addEventListener('click', () => {
+    if (artistsCurrentPage > 1) {
+      artistsCurrentPage--;
+      loadArtists();
+    }
+  });
+  container.appendChild(prevBtn);
+
+  const pageInfo = document.createElement('span');
+  pageInfo.style.display = 'flex';
+  pageInfo.style.alignItems = 'center';
+  pageInfo.style.fontSize = '0.875rem';
+  pageInfo.style.padding = '0 12px';
+  pageInfo.textContent = `Page ${current} of ${totalPages}`;
+  container.appendChild(pageInfo);
+
+  const nextBtn = document.createElement('button');
+  nextBtn.className = 'btn btn-secondary btn-sm';
+  nextBtn.innerHTML = 'Next <i data-lucide="chevron-right" class="icon-sm"></i>';
+  nextBtn.disabled = current >= totalPages;
+  nextBtn.addEventListener('click', () => {
+    if (artistsCurrentPage < totalPages) {
+      artistsCurrentPage++;
+      loadArtists();
+    }
+  });
+  container.appendChild(nextBtn);
+
+  if (window.lucide) {
+    window.lucide.createIcons({ root: container });
+  }
+}
+
+function setupArtistsView() {
+  const subtabEvents = document.getElementById('subtab-events');
+  const subtabArtists = document.getElementById('subtab-artists');
+  const eventsContainer = document.getElementById('events-view-container');
+  const artistsContainer = document.getElementById('artists-view-container');
+
+  if (subtabEvents && subtabArtists) {
+    subtabEvents.addEventListener('click', () => {
+      currentResultsSubtab = 'events';
+      subtabEvents.className = 'btn btn-sm btn-primary';
+      subtabArtists.className = 'btn btn-sm btn-ghost';
+      subtabArtists.style.border = '1px solid var(--border)';
+      if (eventsContainer) eventsContainer.classList.remove('hidden');
+      if (artistsContainer) artistsContainer.classList.add('hidden');
+      loadResults();
+    });
+
+    subtabArtists.addEventListener('click', () => {
+      currentResultsSubtab = 'artists';
+      subtabArtists.className = 'btn btn-sm btn-primary';
+      subtabArtists.style.border = 'none';
+      subtabEvents.className = 'btn btn-sm btn-ghost';
+      subtabEvents.style.border = '1px solid var(--border)';
+      if (eventsContainer) eventsContainer.classList.add('hidden');
+      if (artistsContainer) artistsContainer.classList.remove('hidden');
+      loadArtists();
+    });
+  }
+
+  // Single lock toggle on table click
+  const artistsTbody = document.getElementById('artists-tbody');
+  if (artistsTbody) {
+    artistsTbody.addEventListener('click', async (e) => {
+      const toggle = e.target.closest('.artist-lock-toggle');
+      if (!toggle) return;
+      const artistId = parseInt(toggle.dataset.id, 10);
+      const isCurrentlyLocked = toggle.dataset.locked === '1';
+      const newLocked = !isCurrentlyLocked;
+
+      try {
+        await api(`/api/artists/${artistId}/lock`, {
+          method: 'PATCH',
+          body: JSON.stringify({ locked: newLocked }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const a = artistsData.find(x => x.id === artistId);
+        if (a) a.is_locked = newLocked ? 1 : 0;
+
+        if (newLocked) {
+          toggle.dataset.locked = '1';
+          toggle.title = 'Locked — click to unlock';
+          toggle.style.opacity = '1';
+          toggle.style.color = 'var(--primary)';
+        } else {
+          toggle.dataset.locked = '0';
+          toggle.title = 'Unlocked — click to lock';
+          toggle.style.opacity = '0.25';
+          toggle.style.color = '';
+        }
+
+        const tr = toggle.closest('tr');
+        const delBtn = tr?.querySelector('.btn-delete-artist');
+        if (delBtn) {
+          if (newLocked) {
+            delBtn.disabled = true;
+            delBtn.style.opacity = '0.3';
+            delBtn.style.cursor = 'not-allowed';
+            delBtn.title = 'Cannot delete locked artist';
+          } else {
+            delBtn.disabled = false;
+            delBtn.style.opacity = '';
+            delBtn.style.cursor = 'pointer';
+            delBtn.title = 'Delete Artist';
+          }
+        }
+        showToast(newLocked ? 'Artist locked' : 'Artist unlocked', 'success');
+      } catch (err) {
+        showToast('Failed to toggle lock', 'error');
+      }
+    });
+  }
+
+  // Sortable headers click handlers
+  document.querySelectorAll('#artists-table .artist-sortable-th').forEach(th => {
+    th.addEventListener('click', () => {
+      const colKey = th.dataset.col;
+      if (artistsSortCol === colKey) {
+        artistsSortDir = artistsSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        artistsSortCol = colKey;
+        artistsSortDir = (colKey === 'name' || colKey === 'category' || colKey === 'origin_location' || colKey === 'base_location' || colKey === 'dance_styles') ? 'asc' : 'desc';
+      }
+      artistsCurrentPage = 1;
+      loadArtists();
+    });
+  });
+
+  // Select all checkbox
+  const selectAll = document.getElementById('artists-select-all');
+  if (selectAll) {
+    selectAll.addEventListener('change', (e) => {
+      document.querySelectorAll('.artist-row-checkbox').forEach(cb => {
+        cb.checked = e.target.checked;
+      });
+      updateArtistsBulkActions();
+    });
+  }
+
+  // Bulk Delete
+  const btnBulkDelete = document.getElementById('btn-artists-bulk-delete');
+  if (btnBulkDelete) {
+    btnBulkDelete.addEventListener('click', async () => {
+      const ids = getCheckedArtistIds();
+      if (!ids.length) return;
+
+      const lockedCount = ids.filter(id => {
+        const a = artistsData.find(x => x.id === id);
+        return a && a.is_locked === 1;
+      }).length;
+      const unlockCount = ids.length - lockedCount;
+
+      if (lockedCount > 0) {
+        const proceed = await confirmAction(
+          `${ids.length} rows selected: ${lockedCount} are locked and will be skipped, ${unlockCount} will be deleted. Proceed?`
+        );
+        if (!proceed) return;
+      } else {
+        const proceed = await confirmAction(`Delete ${ids.length} selected artist(s)? This cannot be undone.`);
+        if (!proceed) return;
+      }
+
+      const unlockedIds = ids.filter(id => {
+        const a = artistsData.find(x => x.id === id);
+        return !a || a.is_locked !== 1;
+      });
+
+      if (!unlockedIds.length) {
+        showToast('All selected rows are locked — nothing to delete.', 'info');
+        return;
+      }
+
+      try {
+        const res = await api('/api/artists/bulk-delete-by-ids', {
+          method: 'POST',
+          body: JSON.stringify({ artist_ids: unlockedIds }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        showToast(
+          lockedCount > 0
+            ? `Deleted ${res.deleted ?? unlockedIds.length} artist(s). ${lockedCount} locked row(s) were preserved.`
+            : `Deleted ${res.deleted ?? unlockedIds.length} artist(s).`,
+          'success'
+        );
+        loadArtists();
+      } catch (err) {
+        showToast('Failed to delete selected artists', 'error');
+      }
+    });
+  }
+
+  // Bulk Lock
+  const btnBulkLock = document.getElementById('btn-artists-bulk-lock');
+  if (btnBulkLock) {
+    btnBulkLock.addEventListener('click', async () => {
+      const ids = getCheckedArtistIds();
+      if (!ids.length) return showToast('No rows selected', 'error');
+      try {
+        await api('/api/artists/bulk-lock', {
+          method: 'POST',
+          body: JSON.stringify({ artist_ids: ids, locked: true }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        showToast(`Locked ${ids.length} artist(s).`, 'success');
+        loadArtists();
+      } catch (err) {
+        showToast('Failed to lock selected artists', 'error');
+      }
+    });
+  }
+
+  // Bulk Unlock
+  const btnBulkUnlock = document.getElementById('btn-artists-bulk-unlock');
+  if (btnBulkUnlock) {
+    btnBulkUnlock.addEventListener('click', async () => {
+      const ids = getCheckedArtistIds();
+      if (!ids.length) return showToast('No rows selected', 'error');
+      try {
+        await api('/api/artists/bulk-lock', {
+          method: 'POST',
+          body: JSON.stringify({ artist_ids: ids, locked: false }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        showToast(`Unlocked ${ids.length} artist(s).`, 'success');
+        loadArtists();
+      } catch (err) {
+        showToast('Failed to unlock selected artists', 'error');
+      }
+    });
+  }
+
+  // Filter Apply
+  const btnApply = document.getElementById('btn-filter-artists-apply');
+  if (btnApply) {
+    btnApply.addEventListener('click', () => {
+      artistsSearch = document.getElementById('filter-artists-search')?.value.trim() || '';
+      artistsCategory = document.getElementById('filter-artists-category')?.value || 'all';
+      artistsDanceStyle = document.getElementById('filter-artists-dance-style')?.value.trim() || '';
+      artistsLocation = document.getElementById('filter-artists-location')?.value.trim() || '';
+      artistsJobId = document.getElementById('filter-artists-job')?.value || null;
+      artistsLocked = document.getElementById('filter-artists-locked')?.value || '';
+      artistsCurrentPage = 1;
+      loadArtists();
+    });
+  }
+
+  // Enter key on inputs
+  ['filter-artists-search', 'filter-artists-dance-style', 'filter-artists-location'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          btnApply?.click();
+        }
+      });
+    }
+  });
+
+  // Select dropdowns instant apply
+  ['filter-artists-category', 'filter-artists-job', 'filter-artists-locked'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', () => {
+        btnApply?.click();
+      });
+    }
+  });
+
+  // Filter Clear
+  const btnClear = document.getElementById('btn-filter-artists-clear');
+  if (btnClear) {
+    btnClear.addEventListener('click', () => {
+      const s = document.getElementById('filter-artists-search'); if (s) s.value = '';
+      const c = document.getElementById('filter-artists-category'); if (c) c.value = 'all';
+      const ds = document.getElementById('filter-artists-dance-style'); if (ds) ds.value = '';
+      const loc = document.getElementById('filter-artists-location'); if (loc) loc.value = '';
+      const j = document.getElementById('filter-artists-job'); if (j) j.value = '';
+      const lk = document.getElementById('filter-artists-locked'); if (lk) lk.value = '';
+      artistsSearch = '';
+      artistsCategory = 'all';
+      artistsDanceStyle = '';
+      artistsLocation = '';
+      artistsJobId = null;
+      artistsLocked = '';
+      artistsCurrentPage = 1;
+      loadArtists();
+    });
+  }
+
+  // Per page select
+  const perPageSelect = document.getElementById('artists-per-page');
+  if (perPageSelect) {
+    perPageSelect.addEventListener('change', () => {
+      artistsPerPage = parseInt(perPageSelect.value, 10) || 50;
+      artistsCurrentPage = 1;
+      loadArtists();
+    });
+  }
+
+  // Export buttons
+  const btnExportCsv = document.getElementById('btn-export-artists-csv');
+  if (btnExportCsv) {
+    btnExportCsv.addEventListener('click', () => {
+      window.location.href = `/api/artists/export/csv?${buildArtistsExportQuery()}`;
+    });
+  }
+
+  const btnExportXlsx = document.getElementById('btn-export-artists-xlsx');
+  if (btnExportXlsx) {
+    btnExportXlsx.addEventListener('click', () => {
+      window.location.href = `/api/artists/export/xlsx?${buildArtistsExportQuery()}`;
+    });
+  }
+}
+
+// ── App Initialization ───────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
   setupResultsColumns();
   setupJobMultiselectEvents();
   setupNicknameSync();
+  setupTargetTypeToggle();
+  setupArtistsView();
   setupMobileTunnelEvents();
   
   Promise.allSettled([
@@ -3626,6 +4349,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadMonitorStats(),
     loadJobHistory(),
     loadResults(),
+    loadArtists(),
     loadSchedules(),
     loadGroups(),
     checkMobileTunnelStatus(),

@@ -1,9 +1,21 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "3.1.0"
-RELEASE_DATE = "2026-08-26"
+VERSION = "3.2.0"
+RELEASE_DATE = "2026-10-19"
 
 CHANGELOG = [
+    {
+        "version": "3.2.0",
+        "date": "2026-10-19",
+        "title": "Artist Scraping Jobs & Directory",
+        "changes": [
+            "Added target selection toggle to New Job to scrape Go&Dance Artists (Dancers, Singers, and DJs) alongside Events",
+            "Implemented dedicated Playwright artist scraping engine extracting bio, locations, dance styles, contact info, and social media profiles",
+            "Added dedicated Artists database storage with content-hash deduplication and row lock protection",
+            "Added Results section subtabs ('Events' and 'Artists') featuring an interactive table, column sorting, search filters, and bulk actions",
+            "Added CSV and Excel (.xlsx) export functionality for scraped artist records"
+        ]
+    },
     {
         "version": "3.1.0",
         "date": "2026-08-26",

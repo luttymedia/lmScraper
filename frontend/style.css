@@ -585,16 +585,19 @@ tr:last-child td {
   transition: opacity 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
-#results-table th:hover .sort-indicator {
+#results-table th:hover .sort-indicator,
+#artists-table th:hover .sort-indicator {
   opacity: 0.75;
 }
 
-#results-table th.sort-active {
+#results-table th.sort-active,
+#artists-table th.sort-active {
   color: var(--primary);
   background-color: var(--surface-elevated);
 }
 
-#results-table th.sort-active .sort-indicator {
+#results-table th.sort-active .sort-indicator,
+#artists-table th.sort-active .sort-indicator {
   opacity: 1;
   color: var(--primary);
 }

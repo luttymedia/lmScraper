@@ -65,7 +65,11 @@ async def start_job(job_id: str, config: ScraperConfig) -> None:
         'started_at': datetime.utcnow().isoformat()
     })
     
-    task = asyncio.create_task(run_scrape(config, progress_queue, pause_event, cancel_event))
+    if getattr(config, 'target_type', 'events') == 'artists':
+        from backend.scraper.goandance_artists import run_artist_scrape
+        task = asyncio.create_task(run_artist_scrape(config, progress_queue, pause_event, cancel_event))
+    else:
+        task = asyncio.create_task(run_scrape(config, progress_queue, pause_event, cancel_event))
     
     active_jobs[job_id] = {
         'task': task,

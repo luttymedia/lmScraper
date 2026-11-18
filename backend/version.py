@@ -1,9 +1,21 @@
 """Version and Changelog management for LMScraper."""
 
-VERSION = "3.2.0"
-RELEASE_DATE = "2026-10-19"
+VERSION = "3.3.0"
+RELEASE_DATE = "2026-11-18"
 
 CHANGELOG = [
+    {
+        "version": "3.3.0",
+        "date": "2026-11-18",
+        "title": "Skipped Record Statistics Persistence",
+        "changes": [
+            "Persisted total skipped record count (`events_skipped`) and per-reason counters (`skipped_duplicate`, `skipped_filtered`, `skipped_invalid`) on the `jobs` table",
+            "Exposed skipped record counters through the existing `/api/jobs` and `/api/jobs/{job_id}` API endpoints",
+            "Updated the event scraper engine to distinguish duplicate, filter-excluded, and invalid/missing-title records while keeping genuine fetch errors separate",
+            "Stopped double-counting `duplicate_updated` events (where dance style tags were merged) as skipped",
+            "Updated the artist scraper engine to persist `skipped_duplicate` and `skipped_invalid` counters while keeping fetch exceptions separate"
+        ]
+    },
     {
         "version": "3.2.0",
         "date": "2026-10-19",

@@ -77,6 +77,10 @@ async def init_db() -> None:
                 events_found INTEGER DEFAULT 0,
                 events_new INTEGER DEFAULT 0,
                 events_updated INTEGER DEFAULT 0,
+                events_skipped INTEGER DEFAULT 0,
+                skipped_duplicate INTEGER DEFAULT 0,
+                skipped_filtered INTEGER DEFAULT 0,
+                skipped_invalid INTEGER DEFAULT 0,
                 error_message TEXT,
                 resume_cursor TEXT,
                 schedule_id TEXT,
@@ -316,6 +320,13 @@ async def init_db() -> None:
             await db.commit()
         except aiosqlite.OperationalError:
             pass  # Column already exists
+
+        for col_name in ('events_skipped', 'skipped_duplicate', 'skipped_filtered', 'skipped_invalid'):
+            try:
+                await db.execute(f'ALTER TABLE jobs ADD COLUMN {col_name} INTEGER DEFAULT 0')
+                await db.commit()
+            except aiosqlite.OperationalError:
+                pass  # Column already exists
 
         try:
             await db.execute('ALTER TABLE schedules ADD COLUMN platform TEXT DEFAULT "goandance"')

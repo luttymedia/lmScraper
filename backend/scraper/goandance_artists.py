@@ -317,7 +317,29 @@ async def run_artist_scrape(
     cancel_event: asyncio.Event
 ) -> dict:
     """Main execution loop for scraping artists with the universal 2-phase architecture."""
-    stats = {"events_found": 0, "events_new": 0, "events_updated": 0, "events_skipped": 0}
+    stats = {
+        "events_found": 0,
+        "events_new": 0,
+        "events_updated": 0,
+        "events_skipped": 0,
+        "skipped_duplicate": 0,
+        "skipped_filtered": 0,
+        "skipped_invalid": 0,
+    }
+
+    def _job_stat_updates(cursor_url: str | None = None) -> dict:
+        updates = {
+            "events_found": stats["events_found"],
+            "events_new": stats["events_new"],
+            "events_updated": stats["events_updated"],
+            "events_skipped": stats["events_skipped"],
+            "skipped_duplicate": stats["skipped_duplicate"],
+            "skipped_filtered": stats["skipped_filtered"],
+            "skipped_invalid": stats["skipped_invalid"],
+        }
+        if cursor_url is not None:
+            updates["resume_cursor"] = cursor_url
+        return updates
 
     async def check_state():
         while not pause_event.is_set():
@@ -456,9 +478,14 @@ async def run_artist_scrape(
                     elif status == 'updated':
                         stats["events_updated"] += 1
                         status_label = "updated"
-                    else:
+                    elif status == 'locked_preserved':
+                        stats["skipped_duplicate"] += 1
                         stats["events_skipped"] += 1
                         status_label = "existing"
+                    else:
+                        stats["skipped_invalid"] += 1
+                        stats["events_skipped"] += 1
+                        status_label = "invalid"
 
                     # Format location and styles for clear log
                     origin = artist_data.get('origin_location') or ''
@@ -479,12 +506,7 @@ async def run_artist_scrape(
                         "new": stats["events_new"], "updated": stats["events_updated"], "skipped": stats["events_skipped"]
                     })
 
-                    await update_job(config.job_id, {
-                        "events_found": stats["events_found"],
-                        "events_new": stats["events_new"],
-                        "events_updated": stats["events_updated"],
-                        "resume_cursor": artist_data.get('profile_url')
-                    })
+                    await update_job(config.job_id, _job_stat_updates(artist_data.get('profile_url')))
                 else:
                     await _emit({"type": "log", "level": "warning", "message": f"[{i}/{total}] Failed to parse artist details from {item.get('profile_url')}"})
 
@@ -492,8 +514,18 @@ async def run_artist_scrape(
 
             await browser.close()
 
-            await _emit({"type": "log", "level": "success", "message": f"Scraping complete! Found {stats['events_found']} artists ({stats['events_new']} new, {stats['events_updated']} updated)."})
-        await _emit({"type": "done", "events_found": stats["events_found"], "events_new": stats["events_new"], "events_updated": stats["events_updated"]})
+            await update_job(config.job_id, _job_stat_updates())
+            await _emit({"type": "log", "level": "success", "message": f"Scraping complete! Found {stats['events_found']} artists ({stats['events_new']} new, {stats['events_updated']} updated, {stats['events_skipped']} skipped)."})
+        await _emit({
+            "type": "done",
+            "events_found": stats["events_found"],
+            "events_new": stats["events_new"],
+            "events_updated": stats["events_updated"],
+            "events_skipped": stats["events_skipped"],
+            "skipped_duplicate": stats["skipped_duplicate"],
+            "skipped_filtered": stats["skipped_filtered"],
+            "skipped_invalid": stats["skipped_invalid"],
+        })
 
     except asyncio.CancelledError:
         await _emit({"type": "log", "level": "warning", "message": "Job cancelled by user"})

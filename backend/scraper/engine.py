@@ -283,8 +283,8 @@ async def process_listing_page(page: Page, config: ScraperConfig, scraper: BaseS
     await save_html(config.job_id, page.url, html)
     return await scraper.process_listing_page(page, html, page.url)
 
-async def scrape_detail_page(context: BrowserContext, url: str, config: ScraperConfig, sem: asyncio.Semaphore, scraper: BaseScraper, check_state=None) -> tuple[dict | None, str | None]:
-    """Scrape a single event detail page."""
+async def scrape_detail_page(context: BrowserContext, url: str, config: ScraperConfig, sem: asyncio.Semaphore, scraper: BaseScraper, check_state=None) -> tuple[dict | None, str | None, bool]:
+    """Scrape a single event detail page. Returns (event, profile_url, fetch_error)."""
     async with sem:
         if check_state: await check_state()
         cached = await load_html(config.job_id, url)
@@ -307,7 +307,7 @@ async def scrape_detail_page(context: BrowserContext, url: str, config: ScraperC
             except Exception as e:
                 logger.error(f"Failed to load {url}: {e}")
                 await page.close()
-                return None, None
+                return None, None, True
             finally:
                 if not page.is_closed():
                     await page.close()
@@ -329,11 +329,33 @@ async def scrape_detail_page(context: BrowserContext, url: str, config: ScraperC
                 event.get('event_url', '')
             )
             
-        return event, profile_url
+        return event, profile_url, False
 
 async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause_event: asyncio.Event, cancel_event: asyncio.Event) -> dict:
     """Main scraping engine function."""
-    stats = {"events_found": 0, "events_new": 0, "events_updated": 0, "events_skipped": 0}
+    stats = {
+        "events_found": 0,
+        "events_new": 0,
+        "events_updated": 0,
+        "events_skipped": 0,
+        "skipped_duplicate": 0,
+        "skipped_filtered": 0,
+        "skipped_invalid": 0,
+    }
+
+    def _job_stat_updates(cursor_url: str | None = None) -> dict:
+        updates = {
+            "events_found": stats["events_found"],
+            "events_new": stats["events_new"],
+            "events_updated": stats["events_updated"],
+            "events_skipped": stats["events_skipped"],
+            "skipped_duplicate": stats["skipped_duplicate"],
+            "skipped_filtered": stats["skipped_filtered"],
+            "skipped_invalid": stats["skipped_invalid"],
+        }
+        if cursor_url is not None:
+            updates["resume_cursor"] = cursor_url
+        return updates
     
     async def check_state():
         while not pause_event.is_set():
@@ -343,6 +365,13 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
             
     async def _emit(event: dict):
         await emit(progress_queue, event, job_id=config.job_id)
+
+    async def _emit_progress(phase: int, processed: int, phase_total: int):
+        await _emit({
+            "type": "progress", "phase": phase,
+            "processed": processed, "total": phase_total,
+            "new": stats["events_new"], "updated": stats["events_updated"], "skipped": stats["events_skipped"]
+        })
 
     try:
         await _emit({"type": "phase", "phase": 1, "label": "Starting browser"})
@@ -450,46 +479,50 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
             for i, url in enumerate(detail_urls_list, 1):
                 await check_state()
                 
-                event, prof = await scrape_detail_page(context, url, config, sem, scraper, check_state=check_state)
-                if event:
-                    matches, reason = event_matches_filters(event, config.filters)
-                    if not matches:
-                        title = event.get('title') or url
-                        await _emit({"type": "log", "level": "info", "message": f"[{i}/{total}] Skipped: {title[:35]} ({reason})"})
-                        continue
-                        
-                    stats["events_found"] += 1
-                    inserted_id, insert_status = await insert_event(event)
-                    if insert_status == "new":
-                        stats["events_new"] += 1
-                        status_label = "new"
-                        if prof:
-                            profile_urls.add(prof)
-                            await _emit({"type": "log", "level": "info", "message": f"   └─ Found organizer profile: {prof}"})
-                    elif insert_status == "duplicate_updated":
-                        stats["events_updated"] += 1
-                        stats["events_skipped"] += 1
-                        status_label = "duplicate, updated tags"
-                    else:
-                        stats["events_skipped"] += 1
-                        status_label = "duplicate"
-                    title = event.get('title') or url
-                    await _emit({"type": "log", "level": "info", "message": f"[{i}/{total}] Scraped: {title[:40]} ({status_label})"})
-                        
-                    await _emit({
-                        "type": "progress", "phase": 2, 
-                        "processed": i, "total": total,
-                        "new": stats["events_new"], "updated": stats["events_updated"], "skipped": stats["events_skipped"]
-                    })
-                    
-                    await update_job(config.job_id, {
-                        "events_found": stats["events_found"],
-                        "events_new": stats["events_new"],
-                        "events_updated": stats["events_updated"],
-                        "resume_cursor": url
-                    })
-                else:
+                event, prof, fetch_error = await scrape_detail_page(context, url, config, sem, scraper, check_state=check_state)
+                if fetch_error:
+                    # Keep genuine fetch/load errors separate from skipped records
                     await _emit({"type": "log", "level": "warning", "message": f"[{i}/{total}] No event details parsed from {url}"})
+                    continue
+
+                if not event or not (event.get('title') or '').strip():
+                    stats["skipped_invalid"] += 1
+                    stats["events_skipped"] += 1
+                    await _emit({"type": "log", "level": "info", "message": f"[{i}/{total}] Skipped: {url} (invalid/missing title)"})
+                    await _emit_progress(2, i, total)
+                    await update_job(config.job_id, _job_stat_updates(url))
+                    continue
+
+                matches, reason = event_matches_filters(event, config.filters)
+                if not matches:
+                    stats["skipped_filtered"] += 1
+                    stats["events_skipped"] += 1
+                    title = event.get('title') or url
+                    await _emit({"type": "log", "level": "info", "message": f"[{i}/{total}] Skipped: {title[:35]} ({reason})"})
+                    await _emit_progress(2, i, total)
+                    await update_job(config.job_id, _job_stat_updates(url))
+                    continue
+                    
+                stats["events_found"] += 1
+                inserted_id, insert_status = await insert_event(event)
+                if insert_status == "new":
+                    stats["events_new"] += 1
+                    status_label = "new"
+                    if prof:
+                        profile_urls.add(prof)
+                        await _emit({"type": "log", "level": "info", "message": f"   └─ Found organizer profile: {prof}"})
+                elif insert_status == "duplicate_updated":
+                    stats["events_updated"] += 1
+                    status_label = "duplicate, updated tags"
+                else:
+                    stats["skipped_duplicate"] += 1
+                    stats["events_skipped"] += 1
+                    status_label = "duplicate"
+                title = event.get('title') or url
+                await _emit({"type": "log", "level": "info", "message": f"[{i}/{total}] Scraped: {title[:40]} ({status_label})"})
+                    
+                await _emit_progress(2, i, total)
+                await update_job(config.job_id, _job_stat_updates(url))
                 
             # Phase 3: Profiles (Simplified: just saving HTML for now)
             if profile_urls:
@@ -512,16 +545,22 @@ async def run_scrape(config: ScraperConfig, progress_queue: asyncio.Queue, pause
                             finally:
                                 if not p.is_closed():
                                     await p.close()
-                    await _emit({
-                        "type": "progress", "phase": 3,
-                        "processed": i, "total": len(profile_urls),
-                        "new": stats["events_new"], "skipped": stats["events_skipped"]
-                    })
+                    await _emit_progress(3, i, len(profile_urls))
                     
             await browser.close()
             
-            await _emit({"type": "log", "level": "success", "message": f"Scraping complete! Found {stats['events_found']} events ({stats['events_new']} new, {stats['events_updated']} updated)."})
-        await _emit({"type": "done", "events_found": stats["events_found"], "events_new": stats["events_new"], "events_updated": stats["events_updated"]})
+            await update_job(config.job_id, _job_stat_updates())
+            await _emit({"type": "log", "level": "success", "message": f"Scraping complete! Found {stats['events_found']} events ({stats['events_new']} new, {stats['events_updated']} updated, {stats['events_skipped']} skipped)."})
+        await _emit({
+            "type": "done",
+            "events_found": stats["events_found"],
+            "events_new": stats["events_new"],
+            "events_updated": stats["events_updated"],
+            "events_skipped": stats["events_skipped"],
+            "skipped_duplicate": stats["skipped_duplicate"],
+            "skipped_filtered": stats["skipped_filtered"],
+            "skipped_invalid": stats["skipped_invalid"],
+        })
         
     except asyncio.CancelledError:
         await _emit({"type": "log", "level": "warning", "message": "Job cancelled by user"})
